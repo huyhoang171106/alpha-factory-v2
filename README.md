@@ -29,6 +29,7 @@ Search and allocation:
 - `quality_diversity.py`: descriptor-based archive + novelty scoring.
 - `budget_allocator.py`: Tier-1 cheap gate + Tier-2 expected value.
 - `generator.py`, `pattern_lab.py`, `alpha_policy.py`, `alpha_ast.py`.
+- `generator.py` supports opt-in `GENERATOR_MODE=hypothesis_driven` for hypothesis-first generation.
 
 Execution and governance:
 - `wq_client.py`: auth/sim/submit/status API integration.
@@ -70,9 +71,14 @@ Primary metrics:
 - Async mode: `python alpha_factory_cli.py async --limit 0 --score 50`
 - Daily mode: `python alpha_factory_cli.py start`
 - One-click auto profile:
-  - Local: `python alpha_factory_cli.py auto --profile local`
+  - Local (hybrid supervisor + singleton lock): `python alpha_factory_cli.py auto --profile local`
+    - disable hybrid wrapper: `python alpha_factory_cli.py auto --profile local --no-hybrid`
   - VPS: `python alpha_factory_cli.py auto --profile vps`
   - GitHub burst profile: `python alpha_factory_cli.py auto --profile gha`
+- Global command mode (run from any directory):
+  - install once: `python alpha_factory_cli.py install-global --name alpha`
+  - then run: `alpha --help`
+  - one-click local run: `alpha --yolo`
 
 ## CLI Commands
 
@@ -83,6 +89,7 @@ Primary metrics:
 - `replay-dlq`: requeue dead-lettered submit jobs
 - `sync-submit`: poll WQ review status for submitted alphas
 - `public-report`: export sanitized KPI JSON for external sharing
+- `install-global`: install system-wide command wrapper (`alpha`)
 - `kpi`: print minute-level pipeline + QD stats
 - `test`: run unit tests
 - `zip`: generate portable zip package
@@ -97,9 +104,16 @@ Runtime:
 - `ASYNC_TIER1_MIN_QUALITY`
 - `ASYNC_TIER2_MIN_EV`
 - `ASYNC_REVIEW_JITTER_RATIO`
+- `GENERATOR_MODE` (`legacy` or `hypothesis_driven`)
 - `GHA_BURST_LIMIT`
 - `GHA_PRE_RANK_SCORE`
 - `GHA_SYNC_LIMIT`
+- `LOCAL_HYBRID_SYNC_INTERVAL`
+- `LOCAL_HYBRID_KPI_INTERVAL`
+- `LOCAL_HYBRID_SYNC_LIMIT`
+- `LOCAL_HYBRID_RESTART_BACKOFF`
+- `LOCAL_HYBRID_SCORE`
+- `LOCAL_SINGLETON_LOCKFILE`
 
 WQ client:
 - `WQ_MAX_CONCURRENT`

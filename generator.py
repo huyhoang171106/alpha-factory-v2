@@ -52,7 +52,60 @@ class AlphaGenerator:
         "arxiv_elite", "advanced_ops"
     ]
 
-    def __init__(self, dna_weights: DNAWeights = None, mining_level: int = 4):
+    HYPOTHESIS_BLOCKS = {
+        "mean_reversion": {
+            "base": [
+                lambda d: f"returns",
+                lambda d: f"ts_delta(close, {d})",
+            ],
+            "filters": [
+                lambda d: f"abs(returns)",
+                lambda d: f"volume / adv20",
+                lambda d: f"adv20 / ts_mean(adv20, {d})",
+            ],
+            "direction": "-",
+        },
+        "momentum": {
+            "base": [
+                lambda d: f"returns",
+                lambda d: f"ts_mean(returns, {d})",
+            ],
+            "filters": [
+                lambda d: f"volume / adv20",
+                lambda d: f"adv20 / ts_mean(adv20, {d})",
+            ],
+            "direction": "+",
+        },
+        "liquidity": {
+            "base": [
+                lambda d: f"volume / adv20",
+                lambda d: f"adv20 / ts_mean(adv20, {d})",
+            ],
+            "filters": [
+                lambda d: f"returns",
+                lambda d: f"abs(returns)",
+            ],
+            "direction": "+",
+        },
+        "overreaction": {
+            "base": [
+                lambda d: f"returns",
+                lambda d: f"abs(returns)",
+            ],
+            "filters": [
+                lambda d: f"adv20 / ts_mean(adv20, {d})",
+                lambda d: f"volume / adv20",
+            ],
+            "direction": "-",
+        },
+    }
+
+    def __init__(
+        self,
+        dna_weights: DNAWeights = None,
+        mining_level: int = 4,
+        generation_mode: str | None = None,
+    ):
         self._seen: Set[str] = set()
         self._seeds = get_all_seeds()
         self._theme_seeds: Dict[str, List[str]] = {
@@ -62,6 +115,7 @@ class AlphaGenerator:
         self.mining_level = max(1, min(5, mining_level))
         self.rag_mutator = RAGMutator() if RAGMutator else None
         self._hypotheses = self._load_hypotheses()
+        self.generation_mode = (generation_mode or os.getenv("GENERATOR_MODE", "legacy")).strip().lower()
 
     def _load_hypotheses(self) -> List[dict]:
         path = os.path.join(os.path.dirname(__file__), "..", "data", "hypotheses", "iqc_core.json")
@@ -129,6 +183,97 @@ class AlphaGenerator:
 
         weights = [self.weights.operator_weights[op] for op in tracked]
         return random.choices(tracked, weights=weights, k=1)[0]
+
+    @staticmethod
+    def _is_structurally_valid_hypothesis_expr(expr: str) -> bool:
+        """
+        Hard constraints for hypothesis-driven generation:
+        - must contain cross-sectional rank
+        - must contain direction signal (+/-)
+        - must be group neutralized
+        """
+        text = (expr or "").replace(" ", "")
+        if "rank(" not in text:
+            return False
+        if "group_neutralize(" not in text:
+            return False
+        if "group_neutralize(ts_decay_linear(" not in text:
+            return False
+        has_negative = "-rank(" in text or "*-" in text or "(-rank(" in text
+        has_positive = "*rank(" in text or "rank(" in text
+        return has_negative or has_positive
+
+    def _build_hypothesis_expression(self, hypothesis: str) -> str:
+        spec = self.HYPOTHESIS_BLOCKS[hypothesis]
+        d_base = self._get_biased_lookback("short")
+        d_filter = self._get_biased_lookback("mid")
+        decay = random.choice([5, 6, 7, 8, 9])
+
+        base_signal = random.choice(spec["base"])(d_base)
+        filter_signal = random.choice(spec["filters"])(d_filter)
+
+        # Borrowed from BRAIN community tips:
+        # - regression_neut() to orthogonalize core signal vs broad-market drift
+        # - pasteurize() for cross-universe robustness in cross-sectional ops
+        if random.random() < 0.22:
+            base_signal = f"regression_neut({base_signal}, ts_mean(returns, {d_filter}))"
+        if random.random() < 0.28:
+            filter_signal = f"pasteurize({filter_signal})"
+
+        combined = f"rank({base_signal}) * rank({filter_signal})"
+
+        if spec["direction"] == "-":
+            directional = f"-({combined})"
+        else:
+            directional = combined
+
+        smoothed = f"ts_decay_linear({directional}, {decay})"
+        group_expr = self._choose_neutralization_group()
+        return f"group_neutralize({smoothed}, {group_expr})"
+
+    @staticmethod
+    def _choose_neutralization_group() -> str:
+        """
+        Include classic and custom/double neutralization groups.
+        """
+        options = [
+            "subindustry",
+            "industry",
+            "sector",
+            "bucket(rank(cap), range=\"0.2,1,0.2\")",
+            "densify(industry * 1000 + bucket(rank(cap), range=\"0.2,1,0.2\"))",
+        ]
+        weights = [0.52, 0.22, 0.14, 0.07, 0.05]
+        return random.choices(options, weights=weights, k=1)[0]
+
+    def generate_hypothesis_driven(self, n: int = 20) -> List[AlphaCandidate]:
+        """
+        Agent-style hypothesis-first generator:
+        hypothesis -> base -> filter -> direction -> smooth -> neutralize
+        """
+        results: List[AlphaCandidate] = []
+        attempts = 0
+        max_attempts = max(n * 12, 50)
+        hypotheses = list(self.HYPOTHESIS_BLOCKS.keys())
+
+        while len(results) < n and attempts < max_attempts:
+            attempts += 1
+            hypothesis = random.choice(hypotheses)
+            expr = self._build_hypothesis_expression(hypothesis)
+            if not self._is_structurally_valid_hypothesis_expr(expr):
+                continue
+
+            self._current_hypothesis = hypothesis
+            self._add_if_new(
+                expr,
+                results,
+                theme=hypothesis,
+                mutation_type="hypothesis_driven",
+                family=hypothesis,
+            )
+            if hasattr(self, "_current_hypothesis"):
+                delattr(self, "_current_hypothesis")
+        return results
 
     # =========================================================
     # Strategy 1: Theme-Driven Hypothesis Generator
@@ -495,6 +640,9 @@ class AlphaGenerator:
           15% mutations (volume)
           5% seeds  (variety)
         """
+        if self.generation_mode == "hypothesis_driven":
+            return self.generate_hypothesis_driven(n=n)
+
         results = []
         
         llm_ratio = 0.10
@@ -518,7 +666,7 @@ class AlphaGenerator:
                         results.append(c)
 
         # 2. Re-distribute remaining quota
-        remaining = n - len(results)
+        remaining = max(0, n - len(results))
         n_l5 = int(remaining * 0.25) if self.mining_level >= 5 else 0
         post_l5 = remaining - n_l5
         n_themes   = int(post_l5 * 0.35)

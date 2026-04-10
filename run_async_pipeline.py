@@ -17,13 +17,15 @@ import logging
 import signal
 import time
 import os
+import random
+from types import SimpleNamespace
 from typing import Dict, Tuple
 
 from generator import AlphaGenerator
 from alpha_ranker import score_expression
 from tracker import AlphaTracker
 from wq_client import WQClient
-from alpha_policy import passes_quality_gate
+from alpha_policy import estimate_competition_priority, passes_quality_gate_v2, should_simulate_candidate
 from alpha_candidate import AlphaCandidate
 from alpha_ast import parameter_agnostic_signature
 from submit_governor import SubmitGovernor
@@ -31,16 +33,22 @@ from quality_diversity import QualityDiversityArchive
 from budget_allocator import BudgetAllocator
 
 # Configuration
-QUEUE_SIZE = 1000
+GEN_QUEUE_SIZE = max(100, int(os.getenv("ASYNC_GEN_QUEUE_SIZE", "600")))
+SIM_QUEUE_SIZE = max(50, int(os.getenv("ASYNC_SIM_QUEUE_SIZE", "300")))
 RANKER_WORKERS = max(1, int(os.getenv("ASYNC_RANKER_WORKERS", "2")))
 SIMULATOR_WORKERS = max(1, int(os.getenv("ASYNC_SIMULATOR_WORKERS", "1")))  # WQ API has global concurrency limits
-BATCH_SIZE = 20        # Simulation batch size
+BATCH_SIZE = max(1, int(os.getenv("ASYNC_BATCH_SIZE", "12")))
 PRE_RANK_THRESHOLD = 50.0
 NOVELTY_WINDOW = 12000
 NOVELTY_MIN = float(os.getenv("ASYNC_NOVELTY_MIN", "0.28"))
+MIN_CRITIC_SCORE = float(os.getenv("ASYNC_MIN_CRITIC_SCORE", "0.38"))
+GEN_BATCH_SIZE = max(5, int(os.getenv("ASYNC_GEN_BATCH_SIZE", "20")))
 ASYNC_USE_RAG = os.getenv("ASYNC_USE_RAG", "0").strip().lower() in ("1", "true", "yes")
 TIER1_MIN_QUALITY = float(os.getenv("ASYNC_TIER1_MIN_QUALITY", "0.50"))
 TIER2_MIN_EV = float(os.getenv("ASYNC_TIER2_MIN_EV", "0.34"))
+ENABLE_D0 = os.getenv("ASYNC_ENABLE_D0", "1").strip().lower() in ("1", "true", "yes")
+D1_SHARE = max(0.0, min(1.0, float(os.getenv("ASYNC_D1_SHARE", "0.80"))))
+SIM_BATCH_TIMEOUT = max(30, int(os.getenv("ASYNC_SIM_BATCH_TIMEOUT", "150")))
 
 logging.basicConfig(
     level=logging.INFO,
@@ -65,12 +73,14 @@ class AsyncAlphaFactory:
         self.target = candidates_target
         self.pre_rank_score = pre_rank_score
         
-        self.gen_queue = asyncio.Queue(maxsize=QUEUE_SIZE)
-        self.sim_queue = asyncio.Queue(maxsize=QUEUE_SIZE // 2)
+        self.gen_queue = asyncio.Queue(maxsize=GEN_QUEUE_SIZE)
+        self.sim_queue = asyncio.Queue(maxsize=SIM_QUEUE_SIZE)
         
         self.tracker = tracker if tracker is not None else AlphaTracker()
         self.client = client if client is not None else WQClient()
-        self.generator = generator if generator is not None else AlphaGenerator()
+        self.generator = generator if generator is not None else AlphaGenerator(
+            generation_mode=os.getenv("GENERATOR_MODE", "legacy")
+        )
         self.governor = governor if governor is not None else SubmitGovernor(self.tracker, self.client)
         self.qd_archive = QualityDiversityArchive(max_recent=NOVELTY_WINDOW)
         self.pending_signatures: set[str] = set()
@@ -88,7 +98,11 @@ class AsyncAlphaFactory:
             "generated": 0,
             "filtered": 0,
             "simulated": 0,
+            "simulated_d1": 0,
+            "simulated_d0": 0,
             "passed": 0,
+            "passed_d1": 0,
+            "passed_d0": 0,
             "errors": 0,
             "queued": 0,
             "submitted": 0,
@@ -104,6 +118,19 @@ class AsyncAlphaFactory:
         mutation = getattr(cand, "mutation_type", "seed") or "seed"
         return f"{theme}:{mutation}"
 
+    def _assign_delay_lane(self, cand: AlphaCandidate) -> None:
+        if not ENABLE_D0:
+            cand.delay = 1
+            return
+        cand.delay = 1 if random.random() < D1_SHARE else 0
+
+    def _simulate_batch_with_delay(self, expressions: list[str], delay: int):
+        try:
+            return self.client.simulate_batch(expressions, delay=delay)
+        except TypeError:
+            # Compatibility with lightweight test doubles.
+            return self.client.simulate_batch(expressions)
+
     def should_accept_candidate(self, cand: AlphaCandidate) -> Tuple[bool, str]:
         """
         Fast gate for ranker worker. Returns (is_accepted, reason).
@@ -115,6 +142,8 @@ class AsyncAlphaFactory:
             return False, "duplicate_db"
         if self.tracker.is_collinear(cand.expression):
             return False, "collinear"
+        if not should_simulate_candidate(cand.expression, min_critic_score=MIN_CRITIC_SCORE):
+            return False, "low_critic_score"
         score, _ = score_expression(cand.expression)
         if score < self.pre_rank_score:  # cheap pre-ranker
             return False, "low_score"
@@ -137,19 +166,24 @@ class AsyncAlphaFactory:
         loop = asyncio.get_running_loop()
         while self.is_running:
             try:
+                # Strong backpressure so we don't waste CPU generating while downstream is saturated.
+                if self.gen_queue.qsize() > GEN_QUEUE_SIZE * 0.75 or self.sim_queue.qsize() > SIM_QUEUE_SIZE * 0.75:
+                    await asyncio.sleep(2)
+                    continue
                 # Generate a small batch to keep the queue fresh
                 # Run CPU-heavy generation off the event loop to keep workers responsive.
                 batch = await loop.run_in_executor(
                     None,
-                    lambda: self.generator.generate_batch(n=50, use_rag=ASYNC_USE_RAG),
+                    lambda: self.generator.generate_batch(n=GEN_BATCH_SIZE, use_rag=ASYNC_USE_RAG),
                 )
                 for cand in batch:
                     if not self.is_running: break
+                    self._assign_delay_lane(cand)
                     await self.gen_queue.put(cand)
                     self.stats["generated"] += 1
                 
                 # Dynamic pacing
-                if self.gen_queue.qsize() > QUEUE_SIZE * 0.8:
+                if self.gen_queue.qsize() > GEN_QUEUE_SIZE * 0.8:
                     await asyncio.sleep(2)
             except Exception as e:
                 logger.error(f"❌ [Producer] Error: {e}")
@@ -194,76 +228,134 @@ class AsyncAlphaFactory:
                 if not batch: continue
 
                 logger.info(f"📡 [Simulator-{worker_id}] Simulating batch of {len(batch)} alphas...")
-                batch_map: Dict[str, AlphaCandidate] = {}
+                delay_groups: Dict[int, list[AlphaCandidate]] = {1: [], 0: []}
                 for cand in batch:
-                    # keep first candidate for duplicated expressions
-                    batch_map.setdefault(cand.expression, cand)
-                
-                loop = asyncio.get_event_loop()
-                results = await loop.run_in_executor(
-                    None, 
-                    self.client.simulate_batch, 
-                    [b.expression for b in batch]
-                )
+                    delay_groups[1 if int(getattr(cand, "delay", 1) or 1) == 1 else 0].append(cand)
 
-                # Adaptive rate limiting based on client stats
-                if getattr(self.client, "last_batch_stats", {}).get("rate_limited", 0) > 0:
-                    cooldown = min(cooldown * 2, 60)
-                    logger.warning(f"🐢 [RateLimit] 429 detected. Increasing cooldown to {cooldown}s")
-                else:
-                    cooldown = max(1, cooldown // 2)
+                for delay in (1, 0):
+                    group = delay_groups.get(delay) or []
+                    if not group:
+                        continue
+                    batch_map: Dict[str, AlphaCandidate] = {}
+                    for cand in group:
+                        batch_map.setdefault(cand.expression, cand)
 
-                passed_results = []
-                for res in results:
-                    cand = batch_map.get(res.expression)
-                    if cand is None:
-                        cand = AlphaCandidate(expression=res.expression, theme="unknown", mutation_type="async_fallback")
-                    row_id = self.tracker.save_result(res, candidate=cand)
-                    self.stats["simulated"] += 1
-                    arm = self._arm_name(cand)
-                    quality_score, _ = score_expression(res.expression)
-                    quality_norm = self.allocator.normalize_quality(quality_score)
-                    novelty, descriptor = self.qd_archive.novelty_score(res.expression)
-                    self.pending_signatures.discard(parameter_agnostic_signature(res.expression))
-                    
-                    if passes_quality_gate(res):
-                        self.tracker.mark_gated_by_id(row_id)
-                        logger.info(f"💎 [SUCCESS] Sharpe={res.sharpe:.2f} | {res.expression[:60]}")
-                        self.stats["passed"] += 1
-                        self.allocator.update(arm, 1.0)
-                        if self.qd_archive.maybe_update_archive(
-                            res.expression,
-                            quality=(0.70 * float(res.sharpe or 0.0) + 0.30 * float(res.fitness or 0.0)),
-                            novelty=novelty,
-                            descriptor=descriptor,
-                        ):
-                            self.stats["archive_updates"] += 1
-                            self.tracker.upsert_qd_archive(
-                                descriptor=descriptor,
-                                expression=res.expression,
-                                quality_score=(0.70 * float(res.sharpe or 0.0) + 0.30 * float(res.fitness or 0.0)),
-                                novelty_score=novelty,
-                            )
-                        passed_results.append(res)
-                    else:
-                        self.tracker.mark_rejected_by_id(row_id, reason=getattr(res, "error", "") or "quality_gate_failed")
-                        self.stats["rejected"] += 1
-                        self.allocator.update(arm, 0.0)
-                        # still register explored behavior to avoid repeating known bad shapes
-                        self.qd_archive.maybe_update_archive(
-                            res.expression,
-                            quality=(0.40 * quality_norm),
-                            novelty=novelty,
-                            descriptor=descriptor,
+                    loop = asyncio.get_event_loop()
+                    try:
+                        results = await asyncio.wait_for(
+                            loop.run_in_executor(
+                                None,
+                                self._simulate_batch_with_delay,
+                                [b.expression for b in group],
+                                delay,
+                            ),
+                            timeout=SIM_BATCH_TIMEOUT,
                         )
+                    except asyncio.TimeoutError:
+                        logger.warning(
+                            "⏰ [Simulator-%s] Batch timeout after %ss (delay=%s, size=%s)",
+                            worker_id,
+                            SIM_BATCH_TIMEOUT,
+                            delay,
+                            len(group),
+                        )
+                        results = []
+                        for cand in group:
+                            timeout_result = SimpleNamespace(
+                                expression=cand.expression,
+                                sharpe=0.0,
+                                fitness=0.0,
+                                turnover=0.0,
+                                returns=0.0,
+                                drawdown=0.0,
+                                passed_checks=0,
+                                total_checks=0,
+                                all_passed=False,
+                                alpha_id="",
+                                alpha_url="",
+                                error="simulate_batch_timeout",
+                                sub_sharpe=-1.0,
+                                delay=delay,
+                            )
+                            row_id = self.tracker.save_result(timeout_result, candidate=cand)
+                            self.tracker.mark_rejected_by_id(row_id, reason="simulate_batch_timeout")
+                            self.stats["simulated"] += 1
+                            if delay == 1:
+                                self.stats["simulated_d1"] += 1
+                            else:
+                                self.stats["simulated_d0"] += 1
+                            self.stats["rejected"] += 1
+                            self.stats["errors"] += 1
+                            self.pending_signatures.discard(parameter_agnostic_signature(cand.expression))
+                        continue
 
-                if passed_results:
-                    queued = self.governor.enqueue(passed_results, candidates_map=batch_map)
-                    if queued:
-                        self.stats["queued"] += queued
-                        flush = self.governor.flush_once(limit=min(queued, 4))
-                        self.stats["submitted"] += int(flush.get("submitted", 0))
-                        self.stats["dead_lettered"] += int(flush.get("dead_lettered", 0))
+                    # Adaptive rate limiting based on client stats
+                    if getattr(self.client, "last_batch_stats", {}).get("rate_limited", 0) > 0:
+                        cooldown = min(cooldown * 2, 60)
+                        logger.warning(f"🐢 [RateLimit] 429 detected. Increasing cooldown to {cooldown}s")
+                    else:
+                        cooldown = max(1, cooldown // 2)
+
+                    passed_results = []
+                    for res in results:
+                        res.delay = int(getattr(res, "delay", delay) or delay)
+                        cand = batch_map.get(res.expression)
+                        if cand is None:
+                            cand = AlphaCandidate(expression=res.expression, theme="unknown", mutation_type="async_fallback", delay=res.delay)
+                        row_id = self.tracker.save_result(res, candidate=cand)
+                        self.stats["simulated"] += 1
+                        if res.delay == 1:
+                            self.stats["simulated_d1"] += 1
+                        else:
+                            self.stats["simulated_d0"] += 1
+                        arm = self._arm_name(cand)
+                        quality_score, _ = score_expression(res.expression)
+                        quality_norm = self.allocator.normalize_quality(quality_score)
+                        novelty, descriptor = self.qd_archive.novelty_score(res.expression)
+                        self.pending_signatures.discard(parameter_agnostic_signature(res.expression))
+
+                        if passes_quality_gate_v2(res):
+                            self.tracker.mark_gated_by_id(row_id)
+                            logger.info(f"💎 [SUCCESS] D{res.delay} Sharpe={res.sharpe:.2f} | {res.expression[:60]}")
+                            self.stats["passed"] += 1
+                            if res.delay == 1:
+                                self.stats["passed_d1"] += 1
+                            else:
+                                self.stats["passed_d0"] += 1
+                            self.allocator.update(arm, 1.0)
+                            if self.qd_archive.maybe_update_archive(
+                                res.expression,
+                                quality=(0.70 * float(res.sharpe or 0.0) + 0.30 * float(res.fitness or 0.0)),
+                                novelty=novelty,
+                                descriptor=descriptor,
+                            ):
+                                self.stats["archive_updates"] += 1
+                                self.tracker.upsert_qd_archive(
+                                    descriptor=descriptor,
+                                    expression=res.expression,
+                                    quality_score=(0.70 * float(res.sharpe or 0.0) + 0.30 * float(res.fitness or 0.0)),
+                                    novelty_score=novelty,
+                                )
+                            res.competition_priority = estimate_competition_priority(res)
+                            passed_results.append(res)
+                        else:
+                            self.tracker.mark_rejected_by_id(row_id, reason=getattr(res, "error", "") or "quality_gate_failed")
+                            self.stats["rejected"] += 1
+                            self.allocator.update(arm, 0.0)
+                            self.qd_archive.maybe_update_archive(
+                                res.expression,
+                                quality=(0.40 * quality_norm),
+                                novelty=novelty,
+                                descriptor=descriptor,
+                            )
+
+                    if passed_results:
+                        queued = self.governor.enqueue(passed_results, candidates_map=batch_map)
+                        if queued:
+                            self.stats["queued"] += queued
+                            flush = self.governor.flush_once(limit=min(queued, 4))
+                            self.stats["submitted"] += int(flush.get("submitted", 0))
+                            self.stats["dead_lettered"] += int(flush.get("dead_lettered", 0))
                 review_sync = self.governor.reconcile_submitted(limit=10)
                 self.stats["accepted_review"] += int(review_sync.get("accepted", 0))
                 self.stats["rejected_review"] += int(review_sync.get("rejected", 0))
@@ -293,6 +385,8 @@ class AsyncAlphaFactory:
             
             logger.info(
                 f"📊 [Monitor] Sim: {self.stats['simulated']} | Passed: {self.stats['passed']} | "
+                f"D1Sim: {self.stats['simulated_d1']} | D0Sim: {self.stats['simulated_d0']} | "
+                f"D1Pass: {self.stats['passed_d1']} | D0Pass: {self.stats['passed_d0']} | "
                 f"Queued: {self.stats['queued']} | Submitted: {self.stats['submitted']} | "
                 f"Accepted: {self.stats['accepted_review']} | ReviewReject: {self.stats['rejected_review']} | "
                 f"Rejected: {self.stats['rejected']} | DLQ: {self.stats['dead_lettered']} | "

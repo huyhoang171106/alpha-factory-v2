@@ -12,6 +12,7 @@ Commands:
 - `python alpha_factory_cli.py sync-submit --limit 30`
 - `python alpha_factory_cli.py kpi --minutes 60`
 - One-click equivalent: `python alpha_factory_cli.py auto --profile local`
+  - Opt-in hypothesis mode: set `GENERATOR_MODE=hypothesis_driven`
 
 Expected behavior:
 - Rank/gate before simulation.
@@ -74,6 +75,20 @@ Commands:
 Expected behavior:
 - VPS owns main simulate/submit loop.
 - GH performs burst + sync-submit + KPI artifacts for visibility.
+
+## Use Case 7: Local Hybrid Anti-Crash Runner
+
+Goal:
+- Keep local engine running continuously without duplicate instances.
+
+Commands:
+- `python alpha_factory_cli.py auto --profile local`
+- Optional: `python alpha_factory_cli.py auto --profile local --no-hybrid`
+
+Expected behavior:
+- Singleton lock prevents duplicate local supervisors.
+- Hybrid loop periodically runs `sync-submit` and KPI checks.
+- Engine auto-restarts with backoff if subprocess exits.
 
 ## Use Case 5: KPI-Based Operational Monitoring
 

@@ -1,6 +1,3 @@
-import sys
-import os
-
 from generator import AlphaGenerator
 from alpha_dna import DNAWeights
 
@@ -15,17 +12,18 @@ def test_bias():
     
     gen = AlphaGenerator(dna_weights=w)
     print("Testing DNA Biased Generation...")
-    batch = gen.generate_batch(50)
+    batch = gen.generate_batch(50, use_rag=False)
     
-    vwap_count = sum(1 for e in batch if "vwap" in e)
-    ts_corr_count = sum(1 for e in batch if "ts_corr" in e)
+    exprs = [c.expression for c in batch]
+    vwap_count = sum(1 for e in exprs if "vwap" in e)
+    ts_corr_count = sum(1 for e in exprs if "ts_corr" in e)
     
     with open("test_results.txt", "w") as f:
         f.write(f"Batch size: {len(batch)}\n")
         f.write(f"Expressions with 'vwap': {vwap_count}\n")
         f.write(f"Expressions with 'ts_corr': {ts_corr_count}\n")
         f.write("\nSample biased alphas:\n")
-        for e in batch[:10]:
+        for e in exprs[:10]:
             f.write(f"  {e}\n")
     print("Test results saved to test_results.txt")
 

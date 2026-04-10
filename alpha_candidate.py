@@ -29,6 +29,8 @@ class AlphaCandidate:
     family: str = ""
     seed_id: str = ""
     mutation_type: str = "seed"
+    hypothesis: str = ""
+    delay: int = 1
 
     def __post_init__(self):
         if not self.family:

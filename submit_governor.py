@@ -10,7 +10,7 @@ import random
 from difflib import SequenceMatcher
 from typing import Iterable, Tuple
 
-from alpha_policy import classify_quality_tier, passes_quality_gate
+from alpha_policy import classify_quality_tier, passes_quality_gate_v2
 
 logger = logging.getLogger(__name__)
 
@@ -27,8 +27,12 @@ class SubmitGovernor:
         selected_exprs: list[str] = []
 
         # Select high-throughput queue entries with basic diversity.
-        for result in sorted(sim_results, key=lambda r: float(getattr(r, "sharpe", 0.0) or 0.0), reverse=True):
-            if not passes_quality_gate(result):
+        for result in sorted(
+            sim_results,
+            key=lambda r: float(getattr(r, "competition_priority", getattr(r, "sharpe", 0.0)) or 0.0),
+            reverse=True,
+        ):
+            if not passes_quality_gate_v2(result):
                 continue
             alpha_id = getattr(result, "alpha_id", "")
             if not alpha_id:

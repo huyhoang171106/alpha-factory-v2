@@ -29,6 +29,8 @@ API_BASE = "https://api.worldquantbrain.com"
 MAX_CONCURRENT = int(os.getenv("WQ_MAX_CONCURRENT", "4"))   # 4 concurrent sims for speed
 POLL_INTERVAL = int(os.getenv("WQ_POLL_INTERVAL", "10"))    # 10s polling for faster results
 MAX_WAIT_TIME = int(os.getenv("WQ_MAX_WAIT_TIME", "600"))   # 10 min max wait — WQ server can be slow
+SIM_SUBMIT_RETRIES = max(0, int(os.getenv("WQ_SIM_SUBMIT_RETRIES", "3")))
+SIM_SUBMIT_BACKOFF = max(3, int(os.getenv("WQ_SIM_SUBMIT_BACKOFF", "8")))
 SIM_SUBMIT_FAIL_WINDOW = int(os.getenv("WQ_SIM_FAIL_WINDOW", "20"))
 SIM_CIRCUIT_BREAKER_THRESHOLD = float(os.getenv("WQ_SIM_BREAKER_THRESHOLD", "0.80"))
 SIM_CIRCUIT_BREAKER_COOLDOWN = int(os.getenv("WQ_SIM_BREAKER_COOLDOWN", "90"))
@@ -185,6 +187,17 @@ class WQClient:
             return False
         return True
 
+    @staticmethod
+    def _is_concurrent_sim_limit(response: Optional[requests.Response]) -> bool:
+        if response is None:
+            return False
+        try:
+            payload = response.json()
+            detail = str(payload.get("detail", "")).upper() if isinstance(payload, dict) else ""
+        except Exception:
+            detail = (response.text or "").upper()
+        return "CONCURRENT_SIMULATION_LIMIT_EXCEEDED" in detail
+
     def simulate(
         self,
         expression: str,
@@ -233,23 +246,41 @@ class WQClient:
             }
         }
 
-        try:
-            r = self._api_request("post", f"{API_BASE}/simulations", json=payload)
-            error_code = self._classify_submit_error(r)
-            if error_code:
-                try:
-                    err_detail = r.json() if r is not None else {}
-                except Exception:
-                    err_detail = (r.text if r is not None else "") or "(empty body)"
-                result.error = f"{error_code}: {err_detail}"
+        r = None
+        for attempt in range(SIM_SUBMIT_RETRIES + 1):
+            try:
+                r = self._api_request("post", f"{API_BASE}/simulations", json=payload)
+                error_code = self._classify_submit_error(r)
+                hit_sim_limit = self._is_concurrent_sim_limit(r)
+                if (error_code == "submit_rate_limited" or hit_sim_limit) and attempt < SIM_SUBMIT_RETRIES:
+                    wait = min(90, SIM_SUBMIT_BACKOFF * (2 ** attempt))
+                    logger.warning(
+                        "⏳ Simulation slot full/rate-limited, retry in %ss (attempt %s/%s)",
+                        wait,
+                        attempt + 1,
+                        SIM_SUBMIT_RETRIES + 1,
+                    )
+                    time.sleep(wait)
+                    continue
+                if error_code:
+                    try:
+                        err_detail = r.json() if r is not None else {}
+                    except Exception:
+                        err_detail = (r.text if r is not None else "") or "(empty body)"
+                    result.error = f"{error_code}: {err_detail}"
+                    self._record_submit_outcome(True)
+                    logger.error(f"❌ Submit failed for: {expression[:50]}... [{error_code}]")
+                    return result
+                break
+            except Exception as e:
+                if attempt < SIM_SUBMIT_RETRIES:
+                    wait = min(60, SIM_SUBMIT_BACKOFF * (2 ** attempt))
+                    time.sleep(wait)
+                    continue
+                error_code = self._classify_submit_error(None, e)
+                result.error = f"{error_code}: {e}"
                 self._record_submit_outcome(True)
-                logger.error(f"❌ Submit failed for: {expression[:50]}... [{error_code}]")
                 return result
-        except Exception as e:
-            error_code = self._classify_submit_error(None, e)
-            result.error = f"{error_code}: {e}"
-            self._record_submit_outcome(True)
-            return result
 
         self._record_submit_outcome(False)
 

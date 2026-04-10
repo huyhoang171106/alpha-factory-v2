@@ -4,6 +4,7 @@ Daily workflow: Generate → Validate → Simulate → Submit → Evolve → Log
 """
 
 import logging
+import os
 import time
 import uuid
 from datetime import datetime
@@ -19,7 +20,7 @@ from alpha_ranker import filter_and_rank
 from alpha_dna import AlphaDNA
 from community_harvester import CommunityHarvester
 from alpha_candidate import AlphaCandidate
-from alpha_policy import passes_quality_gate, should_simulate_candidate
+from alpha_policy import passes_quality_gate_v2, should_simulate_candidate
 from submit_governor import SubmitGovernor
 from pattern_lab import PatternLab
 
@@ -63,6 +64,7 @@ class AlphaFactory:
         self.generator = AlphaGenerator(
             dna_weights=self.dna.get_weights(),
             mining_level=self.mining_level,
+            generation_mode=os.getenv("GENERATOR_MODE", "legacy"),
         )
         self.evolver = AlphaEvolver()
         self.tracker = AlphaTracker()
@@ -260,7 +262,7 @@ class AlphaFactory:
 
     def filter_passed(self, results: list[SimResult]) -> list[SimResult]:
         """Step 5: Filter for submittable alphas"""
-        passed = [r for r in results if passes_quality_gate(r)]
+        passed = [r for r in results if passes_quality_gate_v2(r)]
         logger.info(f"📊 Filter: {len(passed)}/{len(results)} submittable")
         return passed
 
