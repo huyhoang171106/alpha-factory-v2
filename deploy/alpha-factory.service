@@ -1,0 +1,17 @@
+[Unit]
+Description=Alpha Factory Async Engine
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/alpha-factory
+EnvironmentFile=/opt/alpha-factory/.env
+ExecStart=/bin/bash /opt/alpha-factory/scripts/run_vps.sh
+Restart=always
+RestartSec=10
+KillSignal=SIGINT
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

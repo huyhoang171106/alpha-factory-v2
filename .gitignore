@@ -1,0 +1,16 @@
+.env
+credentials.json
+*.db
+*.db-wal
+*.db-shm
+results/
+__pycache__/
+*.pyc
+.venv/
+*.log
+*.zip
+*.tmp
+*.bak
+run_log.txt
+test_out.txt
+test_results.txt

@@ -1,0 +1,51 @@
+name: Alpha Burst 5m
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+jobs:
+  burst:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      WQ_EMAIL: ${{ secrets.WQ_EMAIL }}
+      WQ_PASSWORD: ${{ secrets.WQ_PASSWORD }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      WQ_INTERACTIVE_AUTH: "0"
+      WQ_MAX_CONCURRENT: "2"
+      WQ_POLL_INTERVAL: "12"
+      WQ_MAX_WAIT_TIME: "480"
+      GHA_BURST_LIMIT: "60"
+      GHA_PRE_RANK_SCORE: "50"
+      GHA_SYNC_LIMIT: "40"
+      ASYNC_RANKER_WORKERS: "1"
+      ASYNC_SIMULATOR_WORKERS: "1"
+      ASYNC_USE_RAG: "0"
+      ASYNC_REVIEW_JITTER_RATIO: "0.25"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          pip install -r requirements.txt
+
+      - name: Run burst + sync-submit
+        run: python alpha_factory_cli.py auto --profile gha --skip-install
+
+      - name: Export KPI snapshot
+        run: python alpha_factory_cli.py kpi --minutes 60 > kpi_snapshot.json
+
+      - name: Upload KPI artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: alpha-kpi-snapshot
+          path: kpi_snapshot.json

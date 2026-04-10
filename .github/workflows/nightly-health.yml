@@ -1,0 +1,38 @@
+name: Nightly Health
+
+on:
+  schedule:
+    - cron: "15 0 * * *"
+  workflow_dispatch:
+
+jobs:
+  test-and-health:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          pip install -r requirements.txt
+
+      - name: Run tests
+        run: python -m unittest discover -s tests -v
+
+      - name: Generate dry KPI snapshot
+        run: |
+          python alpha_factory_cli.py setup --skip-install
+          python alpha_factory_cli.py kpi --minutes 60 > nightly_kpi_snapshot.json
+
+      - name: Upload nightly artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-health-snapshot
+          path: nightly_kpi_snapshot.json
