@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-run_async_pipeline.py — Professional High-Throughput Async Alpha Factory
+run_async_pipeline.py - Professional High-Throughput Async Alpha Factory
 =======================================================================
 Implements a streaming pipeline:
 Generator -> Ranker -> Simulator -> ResultHandler/Evolver
@@ -243,14 +243,23 @@ class AsyncAlphaFactory:
                     for cand in group:
                         batch_map.setdefault(cand.expression, cand)
 
+                    def _on_sim_done(res, current, total):
+                        self.stats["simulated"] += 1
+                        if getattr(res, "delay", 1) == 1:
+                            self.stats["simulated_d1"] += 1
+                        else:
+                            self.stats["simulated_d0"] += 1
+
                     loop = asyncio.get_event_loop()
                     try:
                         results = await asyncio.wait_for(
                             loop.run_in_executor(
                                 None,
-                                self._simulate_batch_with_delay,
-                                [b.expression for b in group],
-                                delay,
+                                lambda: self.client.simulate_batch(
+                                    [b.expression for b in group],
+                                    delay=delay,
+                                    progress_callback=_on_sim_done,
+                                )
                             ),
                             timeout=SIM_BATCH_TIMEOUT,
                         )
@@ -310,11 +319,7 @@ class AsyncAlphaFactory:
                         if cand is None:
                             cand = AlphaCandidate(expression=res.expression, theme="unknown", mutation_type="async_fallback", delay=res.delay)
                         row_id = self.tracker.save_result(res, candidate=cand)
-                        self.stats["simulated"] += 1
-                        if res.delay == 1:
-                            self.stats["simulated_d1"] += 1
-                        else:
-                            self.stats["simulated_d0"] += 1
+                        # Stats now handled by progress_callback
                         arm = self._arm_name(cand)
                         quality_score, _ = score_expression(res.expression)
                         quality_norm = self.allocator.normalize_quality(quality_score)

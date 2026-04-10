@@ -142,12 +142,13 @@ class RAGMutator:
         if dna_context:
             prompt += "\nINSTRUCTIONS:\n"
             prompt += "1. Study the structure, operator groupings, and logic of the Elite alphas above.\n"
-            prompt += "2. Create a completely newly mixed alpha (F1 Generation). Do NOT strictly copy them.\n"
-            prompt += "3. CRITICAL RESTRICTION: AVOID using 'rank()' as the primary outer wrapper. The platform is oversaturated with simple rank algorithms.\n"
-            prompt += "4. Instead, build non-rank families! Use advanced operators like 'group_neutralize(', 'zscore(', 'ts_zscore(', 'group_zscore(', 'scale(', or continuous mathematical ratios (e.g., A/B or A-B).\n"
-            prompt += "   Example of good structure: 'group_neutralize(ts_mean(returns, 20)/ts_std_dev(returns, 20), sector)'\n"
+            prompt += "2. CRITICAL: Pay attention to the SIGN of the expressions. Many successful alphas are REVERSAL signals (starting with -1 * or -rank).\n"
+            prompt += "3. STABILITY: Avoid using raw 1-day 'returns' as the core signal. Use longer lookbacks (e.g., ts_delta(x, 5), ts_mean(x, 20), ts_corr(x, y, 10)) to keep Turnover < 70%.\n"
+            prompt += "4. NOVELTY: Do NOT strictly copy. Create a completely newly mixed alpha (F1 Generation).\n"
+            prompt += "5. STRUCTURE: AVOID using 'rank()' as the primary outer wrapper. Use advanced operators like 'group_neutralize(', 'zscore(', 'ts_zscore(', 'group_zscore(', or 'scale('.\n"
+            prompt += "   Example of robust reversal: 'group_neutralize(-1 * ts_rank(ts_delta(close, 5), 20), subindustry)'\n"
         else:
-            prompt += "INSTRUCTIONS: Generate a robust short-term reversal or momentum alpha expression. DO NOT rely heavily on basic 'rank(...)'. Explore 'group_neutralize', 'zscore', or continuous mathematical expressions.\n"
+            prompt += "INSTRUCTIONS: Generate a robust mean-reversion (reversal) alpha. Use signs like -1 * ... and lookbacks > 5 days. DO NOT rely on basic 'rank(...)'. Explore 'group_neutralize' or 'zscore'.\n"
             
         prompt += "\nFormat your response by ONLY providing the final mathematical expression. NO markdown, NO text, NO explanation. Just the raw string."
         return prompt

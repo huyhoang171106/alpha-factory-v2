@@ -1,5 +1,5 @@
 """
-wq_client.py — WorldQuant Brain API Client
+wq_client.py - WorldQuant Brain API Client
 Handles authentication, simulation, and submission of alpha expressions.
 Reference: WQ-Brain/main.py + worldquant-miner/generation_two/core/simulator_tester.py
 """
@@ -113,7 +113,7 @@ class WQClient:
             else:
                 raise ConnectionError(f"Login failed: {data}")
 
-        logger.info("✅ Logged in to WQ Brain!")
+        logger.info("OK: Logged in to WQ Brain!")
 
     def _api_request(self, method: str, url: str, max_retries: int = 5, **kwargs):
         """Make API request with auto re-login on 401 and rate-limit handling"""
@@ -297,6 +297,19 @@ class WQClient:
                     return result
                 data = r.json()
 
+                # Check for intermediate results to fail-fast
+                is_data = data.get('is')
+                if is_data:
+                    self._parse_is_metrics(is_data, result)
+                    # Fail-fast: if metrics are already below minimum thresholds, stop polling.
+                    # We use 1.25/1.0 as standard "useful" floors. 
+                    if result.sharpe < 1.0 or result.fitness < 0.6:
+                        logger.info(f"  [FAIL-FAST] Sharpe={result.sharpe:.3f}, Fitness={result.fitness:.2f} (Incomplete)")
+                        if 'alpha' in data:
+                            result.alpha_id = data['alpha']
+                            result.alpha_url = f"https://platform.worldquantbrain.com/alpha/{result.alpha_id}"
+                        return result
+
                 if 'alpha' in data:
                     # Simulation complete → fetch alpha details
                     alpha_id = data['alpha']
@@ -304,7 +317,7 @@ class WQClient:
 
                 # Still running
                 progress = data.get('progress', 0)
-                logger.debug(f"  ⏳ Progress: {int(progress * 100)}%")
+                logger.debug(f"  [POLL] Progress: {int(progress * 100)}%")
 
             except Exception as e:
                 logger.warning(f"  Poll error: {e}")
@@ -314,6 +327,30 @@ class WQClient:
         result.error = "Simulation timeout"
         logger.warning(f"⏰ Timeout for: {expression[:50]}...")
         return result
+
+    def _parse_is_metrics(self, is_data: dict, result: SimResult):
+        """Helper to extract IS metrics from alpha or simulation payload"""
+        result.sharpe = is_data.get('sharpe', 0)
+        result.fitness = is_data.get('fitness', 0)
+        result.turnover = round(is_data.get('turnover', 0) * 100, 2)
+        result.returns = is_data.get('returns', 0)
+        result.drawdown = is_data.get('drawdown', 0)
+
+        # Check pass/fail for specific checks if available
+        checks = is_data.get('checks', [])
+        if checks:
+            result.total_checks = len(checks)
+            result.passed_checks = sum(1 for c in checks if c.get('result') == 'PASS')
+            result.all_passed = (result.passed_checks == result.total_checks)
+            
+            # Parse sub_universe_sharpe
+            for check in checks:
+                name = check.get('name', '').lower()
+                if 'sub_universe' in name and 'sharpe' in name:
+                    raw = check.get('value', None)
+                    if raw is not None:
+                        result.sub_sharpe = float(raw)
+                        break
 
     def _fetch_alpha_details(self, alpha_id: str, result: SimResult) -> SimResult:
         """Fetch detailed results for a completed simulation"""
@@ -325,29 +362,9 @@ class WQClient:
 
         try:
             is_data = data.get('is', {})
-            result.sharpe = is_data.get('sharpe', 0)
-            result.fitness = is_data.get('fitness', 0)
-            result.turnover = round(is_data.get('turnover', 0) * 100, 2)
-            result.returns = is_data.get('returns', 0)
-            result.drawdown = is_data.get('drawdown', 0)
-
-            # Check pass/fail
-            checks = is_data.get('checks', [])
-            result.total_checks = len(checks)
-            result.passed_checks = sum(1 for c in checks if c.get('result') == 'PASS')
-            result.all_passed = result.passed_checks == result.total_checks
-
-            # Parse sub_universe_sharpe from any variant of the check name
-            for check in checks:
-                name = check.get('name', '').lower()
-                if 'sub_universe' in name and 'sharpe' in name:
-                    raw = check.get('value', None)
-                    if raw is not None:
-                        result.sub_sharpe = float(raw)
-                        logger.info(f"  📌 Sub-universe Sharpe: {result.sub_sharpe:.3f}")
-                        break
-
-            status = "✅ PASS" if result.all_passed else f"⚠️ {result.passed_checks}/{result.total_checks}"
+            self._parse_is_metrics(is_data, result)
+            
+            status = "[PASS]" if result.all_passed else f"[FAIL] {result.passed_checks}/{result.total_checks}"
             logger.info(
                 f"  {status} | Sharpe: {result.sharpe:.3f} | "
                 f"Fitness: {result.fitness:.2f} | Turnover: {result.turnover:.1f}% | "
@@ -422,10 +439,10 @@ class WQClient:
                             stats["circuit_breaker"] += 1
                         if "parse error" in err_l:
                             stats["parse_failed"] += 1
-                        logger.warning(f"  ❌ [{i}/{total}] Failed: {res.expression[:50]}... Error: {res.error}")
+                        logger.warning(f"  [ERROR] [{i}/{total}] Failed: {res.expression[:50]}... Error: {res.error}")
                     else:
                         stats["success"] += 1
-                        status = "✅ PASS" if res.all_passed else f"⚠️ FAILS"
+                        status = "[PASS]" if res.all_passed else f"[FAIL]"
                         logger.info(f"  {status} [{i}/{total}] {res.expression[:40]}... (Sharpe: {res.sharpe:.2f})")
                 except Exception as exc:
                     logger.error(f"  ❌ Exception during threaded sim: {exc}")
