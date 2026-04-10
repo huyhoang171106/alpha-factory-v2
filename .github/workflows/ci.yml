@@ -18,6 +18,18 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: requirements.txt
+
+      - name: Repository hygiene guardrail
+        shell: bash
+        run: |
+          set -euo pipefail
+          forbidden='(^|/)\.env$|(^|/)credentials\.json$|(^|/)alpha_results\.db($|-)|(^|/)results/|\.log$|(^|/)\.venv/'
+          if git ls-files | grep -E "$forbidden"; then
+            echo "Forbidden tracked file detected."
+            exit 1
+          fi
 
       - name: Install dependencies
         run: |
@@ -31,3 +43,4 @@ jobs:
         run: |
           python alpha_factory_cli.py --help
           python alpha_factory_cli.py kpi --minutes 5
+          python alpha_factory_cli.py sync-submit --help
