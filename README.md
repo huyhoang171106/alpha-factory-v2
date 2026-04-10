@@ -147,6 +147,11 @@ VPS service files:
 - `scripts/run_vps.sh`
 - `deploy/alpha-factory.service`
 
+Windows autostart files:
+- `scripts/windows_auto_runner.ps1`
+- `scripts/install_windows_autostart.ps1`
+- `scripts/uninstall_windows_autostart.ps1`
+
 ## Team Collaboration (Private Repo)
 
 - Enforce protected `main`: require PR, required status checks (`CI`, `Security Audit`), and no force push.
