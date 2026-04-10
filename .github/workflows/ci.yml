@@ -57,3 +57,14 @@ jobs:
           python alpha_factory_cli.py --help
           python alpha_factory_cli.py kpi --minutes 5
           python alpha_factory_cli.py sync-submit --help
+          python alpha_factory_cli.py public-report --minutes 5 --out results/public_report_ci.json
+          python - <<'PY'
+          import json
+          with open("results/public_report_ci.json", "r", encoding="utf-8") as f:
+              data = json.load(f)
+          assert "pipeline" in data and "qd_archive" in data
+          dump = json.dumps(data).lower()
+          for blocked in ("expression", "wq_password", "wq_email", "openrouter_api_key"):
+              assert blocked not in dump, f"forbidden key leaked: {blocked}"
+          print("public report guardrail passed")
+          PY

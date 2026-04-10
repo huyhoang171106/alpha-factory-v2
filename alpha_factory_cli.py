@@ -9,6 +9,7 @@ Single-entry Windows-friendly launcher:
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import shutil
 import subprocess
@@ -163,6 +164,24 @@ def run_sync_submit(limit: int) -> int:
     return 0
 
 
+def run_public_report(minutes: int, out_path: str) -> int:
+    tracker = AlphaTracker()
+    try:
+        payload = {
+            "generated_at": datetime.utcnow().replace(microsecond=0).isoformat() + "Z",
+            "lookback_minutes": max(1, int(minutes)),
+            "pipeline": tracker.minute_kpis(lookback_minutes=minutes),
+            "qd_archive": tracker.qd_archive_stats(),
+        }
+    finally:
+        tracker.close()
+    output = Path(out_path)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(payload, ensure_ascii=True, indent=2), encoding="utf-8")
+    print(f"[ok] public report exported to {output}")
+    return 0
+
+
 def run_tests() -> int:
     py = _venv_python()
     if (ROOT / "tests").exists():
@@ -228,6 +247,10 @@ def parse_args() -> argparse.Namespace:
 
     p_sync_submit = sub.add_parser("sync-submit", help="poll WQ review status for submitted alphas")
     p_sync_submit.add_argument("--limit", type=int, default=30)
+
+    p_public = sub.add_parser("public-report", help="export sanitized public-safe KPI report")
+    p_public.add_argument("--minutes", type=int, default=60)
+    p_public.add_argument("--out", default="results/public_report.json")
 
     sub.add_parser("test", help="run unit tests")
     sub.add_parser("zip", help="create clean portable zip")
@@ -295,6 +318,9 @@ def main() -> int:
 
         if command == "sync-submit":
             return run_sync_submit(limit=args.limit)
+
+        if command == "public-report":
+            return run_public_report(minutes=args.minutes, out_path=args.out)
 
         if command == "zip":
             out = make_zip()

@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Alpha Factory Public Report",
+  "type": "object",
+  "required": [
+    "generated_at",
+    "lookback_minutes",
+    "pipeline",
+    "qd_archive"
+  ],
+  "properties": {
+    "generated_at": {
+      "type": "string"
+    },
+    "lookback_minutes": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "pipeline": {
+      "type": "object",
+      "required": [
+        "generated",
+        "simulated",
+        "gated",
+        "queued",
+        "submitted",
+        "dead_lettered",
+        "accepted",
+        "rejected_after_submit",
+        "gate_pass_rate",
+        "submit_success_rate",
+        "submit_ok_rate",
+        "dlq_rate",
+        "true_accept_rate",
+        "true_reject_rate"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "generated": { "type": "integer", "minimum": 0 },
+        "simulated": { "type": "integer", "minimum": 0 },
+        "gated": { "type": "integer", "minimum": 0 },
+        "queued": { "type": "integer", "minimum": 0 },
+        "submitted": { "type": "integer", "minimum": 0 },
+        "dead_lettered": { "type": "integer", "minimum": 0 },
+        "accepted": { "type": "integer", "minimum": 0 },
+        "rejected_after_submit": { "type": "integer", "minimum": 0 },
+        "gate_pass_rate": { "type": "number" },
+        "submit_success_rate": { "type": "number" },
+        "submit_ok_rate": { "type": "number" },
+        "dlq_rate": { "type": "number" },
+        "true_accept_rate": { "type": "number" },
+        "true_reject_rate": { "type": "number" }
+      }
+    },
+    "qd_archive": {
+      "type": "object",
+      "required": ["cells", "avg_quality", "max_quality", "updates"],
+      "additionalProperties": false,
+      "properties": {
+        "cells": { "type": "integer", "minimum": 0 },
+        "avg_quality": { "type": "number" },
+        "max_quality": { "type": "number" },
+        "updates": { "type": "integer", "minimum": 0 }
+      }
+    }
+  },
+  "additionalProperties": false
+}

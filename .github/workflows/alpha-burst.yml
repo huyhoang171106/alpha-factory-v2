@@ -46,6 +46,8 @@ jobs:
       ASYNC_SIMULATOR_WORKERS: "1"
       ASYNC_USE_RAG: "0"
       ASYNC_REVIEW_JITTER_RATIO: "0.25"
+      PUBLIC_STATUS_REPO: ${{ secrets.PUBLIC_STATUS_REPO }}
+      PUBLIC_STATUS_TOKEN: ${{ secrets.PUBLIC_STATUS_TOKEN }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -68,9 +70,37 @@ jobs:
       - name: Export KPI snapshot
         run: python alpha_factory_cli.py kpi --minutes 60 > kpi_snapshot.json
 
+      - name: Export public-safe report
+        run: python alpha_factory_cli.py public-report --minutes 60 --out public_report.json
+
       - name: Upload KPI artifact
         uses: actions/upload-artifact@v4
         with:
           name: alpha-kpi-snapshot
           path: kpi_snapshot.json
           retention-days: 7
+
+      - name: Upload public report artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: alpha-public-report
+          path: public_report.json
+          retention-days: 7
+
+      - name: Mirror sanitized report to public showcase repo
+        if: ${{ env.PUBLIC_STATUS_REPO != '' && env.PUBLIC_STATUS_TOKEN != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config --global user.name "alpha-factory-bot"
+          git config --global user.email "alpha-factory-bot@users.noreply.github.com"
+          git clone "https://x-access-token:${PUBLIC_STATUS_TOKEN}@github.com/${PUBLIC_STATUS_REPO}.git" public-status
+          cp public_report.json public-status/public_report.json
+          cd public-status
+          git add public_report.json
+          if git diff --cached --quiet; then
+            echo "No public report changes."
+            exit 0
+          fi
+          git commit -m "chore: update public quant metrics snapshot"
+          git push

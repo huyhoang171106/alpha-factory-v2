@@ -82,6 +82,7 @@ Primary metrics:
 - `auto`: one-click profile runner (`local|vps|gha`)
 - `replay-dlq`: requeue dead-lettered submit jobs
 - `sync-submit`: poll WQ review status for submitted alphas
+- `public-report`: export sanitized KPI JSON for external sharing
 - `kpi`: print minute-level pipeline + QD stats
 - `test`: run unit tests
 - `zip`: generate portable zip package
@@ -132,15 +133,33 @@ Detailed checklist:
 - `.github/PULL_REQUEST_TEMPLATE.md`
 - `SECURITY.md`
 - `ACTIONS_BUDGET.md`
+- `TEAM_SHARING.md`
 
 ## Automation Targets
 
 GitHub Actions workflows:
-- `.github/workflows/alpha-burst.yml` (every 5 minutes burst + sync + KPI artifact)
+- `.github/workflows/alpha-burst.yml` (weekday burst windows + sync + KPI/public artifact)
 - `.github/workflows/nightly-health.yml` (nightly tests + KPI snapshot)
 - `.github/workflows/ci.yml` (push/PR unit tests + CLI smoke)
+- `.github/workflows/security-audit.yml` (secrets scan + SAST + dependency audit + CodeQL)
 
 VPS service files:
 - `scripts/run_vps.sh`
 - `deploy/alpha-factory.service`
+
+## Team Collaboration (Private Repo)
+
+- Enforce protected `main`: require PR, required status checks (`CI`, `Security Audit`), and no force push.
+- Use `.github/CODEOWNERS` to require maintainer review on runtime/governance/workflow files.
+- Keep prod credentials only in GitHub Actions `Secrets` (never in repository files).
+
+## Public Showcase Without Leaking IP
+
+- Generate only sanitized metrics (no alpha expressions/signatures):
+  - `python alpha_factory_cli.py public-report --minutes 60 --out results/public_report.json`
+- Optional mirror to a public profile repo from `alpha-burst.yml` using:
+  - `PUBLIC_STATUS_REPO` (e.g. `username/quant-status`)
+  - `PUBLIC_STATUS_TOKEN` (fine-grained PAT with repo-content write on that public repo only)
+- Safe to publish: throughput, acceptance, DLQ and QD aggregate numbers.
+- Never publish: expressions, candidate payloads, credentials, raw API responses.
 

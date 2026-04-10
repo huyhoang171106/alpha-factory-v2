@@ -12,6 +12,7 @@
   - `WQ_PASSWORD`
 - Optional secret:
   - `OPENROUTER_API_KEY`
+  - `PUBLIC_STATUS_TOKEN` (optional, for sanitized public metrics mirror only)
 
 ## Do Not Commit
 - `.env`
@@ -21,6 +22,30 @@
 - `*.log`, `*.zip`, temp artifacts
 
 These are enforced by `.gitignore`, but still verify staged files before push.
+
+## Repository Hardening Baseline
+- Enable branch protection on `main`:
+  - Require pull request
+  - Require status checks (`CI`, `Security Audit`)
+  - Block force push and branch deletion
+- Require reviews for CODEOWNER files (`.github/CODEOWNERS`).
+- Keep Actions permissions minimal (`contents: read` by default).
+- Run scheduled security workflow:
+  - secrets scan (`gitleaks`)
+  - dependency audit (`pip-audit`)
+  - static analysis (`bandit`, `CodeQL`)
+
+## Team Sharing Rules
+- Use least privilege:
+  - maintainers: write/admin
+  - contributors: triage/read unless explicitly needed
+- Split secrets by environment (`dev`, `prod`) in GitHub Environments.
+- Never share raw `.env` over chat tools. Use password manager or GitHub Secrets only.
+
+## Public Profile Strategy (No IP Leak)
+- Publish only sanitized report output (`public_report.json`) from `public-report`.
+- Allowed public fields: aggregate KPI/QD counts and rates only.
+- Forbidden public fields: alpha expressions, alpha IDs, URLs, raw error payloads, credentials.
 
 ## Incident Response (Credential Leak)
 1. Revoke/rotate leaked credentials at source.

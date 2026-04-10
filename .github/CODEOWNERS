@@ -1,0 +1,13 @@
+# Default owner for all files
+* @hungpixi
+
+# Core runtime and submit governance require explicit maintainer review
+/alpha_factory_cli.py @hungpixi
+/run_async_pipeline.py @hungpixi
+/submit_governor.py @hungpixi
+/tracker.py @hungpixi
+/wq_client.py @hungpixi
+
+# CI/CD and security configs
+/.github/workflows/ @hungpixi
+/SECURITY.md @hungpixi
