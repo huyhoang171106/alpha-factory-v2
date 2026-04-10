@@ -34,6 +34,7 @@ These are enforced by `.gitignore`, but still verify staged files before push.
   - secrets scan (`gitleaks`)
   - dependency audit (`pip-audit`)
   - static analysis (`bandit`, `CodeQL`)
+- Plan caveat: private-repo branch protection requires Pro/Student on personal account.
 
 ## Team Sharing Rules
 - Use least privilege:

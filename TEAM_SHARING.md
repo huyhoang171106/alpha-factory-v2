@@ -13,6 +13,7 @@
   - Require checks: `CI`, `Security Audit`
   - Require CODEOWNER review
   - Disable force push and branch deletion
+- Note: branch protection on private repos requires Pro/Student (or public repo on Free).
 
 ## Secrets and Runtime Isolation
 - Store credentials in GitHub Secrets only:
