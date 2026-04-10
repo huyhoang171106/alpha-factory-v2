@@ -33,8 +33,8 @@ from quality_diversity import QualityDiversityArchive
 from budget_allocator import BudgetAllocator
 
 # Configuration
-GEN_QUEUE_SIZE = max(100, int(os.getenv("ASYNC_GEN_QUEUE_SIZE", "600")))
-SIM_QUEUE_SIZE = max(50, int(os.getenv("ASYNC_SIM_QUEUE_SIZE", "300")))
+GEN_QUEUE_SIZE = int(os.getenv("ASYNC_GEN_QUEUE_SIZE", "600"))
+SIM_QUEUE_SIZE = int(os.getenv("ASYNC_SIM_QUEUE_SIZE", "300"))
 RANKER_WORKERS = max(1, int(os.getenv("ASYNC_RANKER_WORKERS", "2")))
 SIMULATOR_WORKERS = max(1, int(os.getenv("ASYNC_SIMULATOR_WORKERS", "1")))  # WQ API has global concurrency limits
 BATCH_SIZE = max(1, int(os.getenv("ASYNC_BATCH_SIZE", "12")))
