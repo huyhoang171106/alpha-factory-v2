@@ -1,0 +1,26 @@
+topic: alpha-factory-improvement
+execution:
+  output_dir: results/research
+  batch_size: 5
+  items_per_agent: 1
+
+items:
+  - name: WorldQuant Brain Alpha Acceptance Rates
+    category: Market
+    description: Research WQ submission acceptance rates, what differentiates accepted vs rejected alphas, common failure patterns, and benchmarks for top performers on the platform.
+
+  - name: WorldQuant Brain Competitor Platforms
+    category: Market
+    description: Research competing quant alpha generation platforms (Numerai, QuantConnect, Quantopian/IQFeed, kdb+ based systems), their submission volumes, success metrics, and how Alpha Factory compares.
+
+  - name: Alpha Generation Strategy Optimization
+    category: Technical
+    description: Research state-of-the-art alpha generation strategies — hypothesis-driven generation, reinforcement learning for alpha search, multi-factor portfolio construction, and expression diversity techniques.
+
+  - name: Improving WQ Submit Acceptance Rate
+    category: Technical
+    description: Research specific techniques to improve WorldQuant Brain alpha acceptance rates: expression quality heuristics, overfitting prevention, backtesting robustness, feature engineering, and regime awareness.
+
+  - name: Quality-Diversity Search Optimization
+    category: Technical
+    description: Research advanced QD search techniques for alpha discovery — archive management, novelty metrics, MAP-Elites improvements, descriptor engineering, and combining QD with Bayesian optimization.

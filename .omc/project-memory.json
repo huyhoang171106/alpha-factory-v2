@@ -1,0 +1,395 @@
+{
+  "version": "1.0.0",
+  "lastScanned": 1775826686975,
+  "projectRoot": "D:\\alpha-factory-private",
+  "techStack": {
+    "languages": [
+      {
+        "name": "Python",
+        "version": null,
+        "confidence": "high",
+        "markers": [
+          "requirements.txt"
+        ]
+      }
+    ],
+    "frameworks": [],
+    "packageManager": "pip",
+    "runtime": null
+  },
+  "build": {
+    "buildCommand": null,
+    "testCommand": null,
+    "lintCommand": null,
+    "devCommand": null,
+    "scripts": {}
+  },
+  "conventions": {
+    "namingStyle": null,
+    "importStyle": null,
+    "testPattern": null,
+    "fileOrganization": null
+  },
+  "structure": {
+    "isMonorepo": false,
+    "workspaces": [],
+    "mainDirectories": [
+      "scripts",
+      "tests"
+    ],
+    "gitBranches": {
+      "defaultBranch": "main",
+      "branchingStrategy": null
+    }
+  },
+  "customNotes": [],
+  "directoryMap": {
+    "deploy": {
+      "path": "deploy",
+      "purpose": null,
+      "fileCount": 1,
+      "lastAccessed": 1775826686945,
+      "keyFiles": [
+        "alpha-factory.service"
+      ]
+    },
+    "schemas": {
+      "path": "schemas",
+      "purpose": "Schema definitions",
+      "fileCount": 1,
+      "lastAccessed": 1775826686946,
+      "keyFiles": [
+        "public_report_schema.json"
+      ]
+    },
+    "scripts": {
+      "path": "scripts",
+      "purpose": "Build/utility scripts",
+      "fileCount": 5,
+      "lastAccessed": 1775826686946,
+      "keyFiles": [
+        "export_public_metrics.py",
+        "install_windows_autostart.ps1",
+        "run_vps.sh",
+        "uninstall_windows_autostart.ps1",
+        "windows_auto_runner.ps1"
+      ]
+    },
+    "tests": {
+      "path": "tests",
+      "purpose": "Test files",
+      "fileCount": 9,
+      "lastAccessed": 1775826686947,
+      "keyFiles": [
+        "test_alpha_policy.py",
+        "test_async_pipeline.py",
+        "test_budget_allocator.py",
+        "test_generator_hypothesis_mode.py",
+        "test_quality_diversity.py"
+      ]
+    }
+  },
+  "hotPaths": [
+    {
+      "path": "run_async_pipeline.py",
+      "accessCount": 34,
+      "lastAccessed": 1775837331854,
+      "type": "file"
+    },
+    {
+      "path": "alpha_policy.py",
+      "accessCount": 25,
+      "lastAccessed": 1775838248074,
+      "type": "file"
+    },
+    {
+      "path": "alpha_factory_cli.py",
+      "accessCount": 11,
+      "lastAccessed": 1775838302637,
+      "type": "file"
+    },
+    {
+      "path": "",
+      "accessCount": 10,
+      "lastAccessed": 1775837239514,
+      "type": "directory"
+    },
+    {
+      "path": "results\\research\\alpha-factory-improvement\\fields.yaml",
+      "accessCount": 7,
+      "lastAccessed": 1775831050244,
+      "type": "file"
+    },
+    {
+      "path": "results\\research\\alpha-factory-improvement\\Alpha_Generation_Strategy_Optimization.json",
+      "accessCount": 5,
+      "lastAccessed": 1775831672304,
+      "type": "file"
+    },
+    {
+      "path": "alpha_ranker.py",
+      "accessCount": 5,
+      "lastAccessed": 1775832360462,
+      "type": "file"
+    },
+    {
+      "path": "AGENTS.md",
+      "accessCount": 5,
+      "lastAccessed": 1775833094901,
+      "type": "file"
+    },
+    {
+      "path": "README.md",
+      "accessCount": 5,
+      "lastAccessed": 1775835177851,
+      "type": "file"
+    },
+    {
+      "path": "results\\research\\alpha-factory-improvement\\WorldQuant_Brain_Competitor_Platforms.json",
+      "accessCount": 4,
+      "lastAccessed": 1775831672250,
+      "type": "file"
+    },
+    {
+      "path": "CLAUDE.md",
+      "accessCount": 3,
+      "lastAccessed": 1775829796516,
+      "type": "file"
+    },
+    {
+      "path": "tests\\test_alpha_policy.py",
+      "accessCount": 3,
+      "lastAccessed": 1775833027368,
+      "type": "file"
+    },
+    {
+      "path": "HANDOVER_DETAILED.md",
+      "accessCount": 3,
+      "lastAccessed": 1775835076211,
+      "type": "file"
+    },
+    {
+      "path": "requirements.txt",
+      "accessCount": 2,
+      "lastAccessed": 1775828832873,
+      "type": "file"
+    },
+    {
+      "path": "ACTIONS_BUDGET.md",
+      "accessCount": 2,
+      "lastAccessed": 1775828852745,
+      "type": "file"
+    },
+    {
+      "path": "SECURITY.md",
+      "accessCount": 2,
+      "lastAccessed": 1775828852976,
+      "type": "file"
+    },
+    {
+      "path": "C:\\Users\\Hoang\\.claude\\skills\\research-deep",
+      "accessCount": 2,
+      "lastAccessed": 1775830862494,
+      "type": "directory"
+    },
+    {
+      "path": "results\\research\\alpha-factory-improvement\\WorldQuant_Brain_Alpha_Acceptance_Rates.json",
+      "accessCount": 2,
+      "lastAccessed": 1775831672139,
+      "type": "file"
+    },
+    {
+      "path": "results\\research\\alpha-factory-improvement\\Quality-Diversity_Search_Optimization.json",
+      "accessCount": 2,
+      "lastAccessed": 1775831672419,
+      "type": "file"
+    },
+    {
+      "path": "results\\research\\alpha-factory-improvement\\Improving_WQ_Submit_Acceptance_Rate.json",
+      "accessCount": 2,
+      "lastAccessed": 1775831672759,
+      "type": "file"
+    },
+    {
+      "path": "tracker.py",
+      "accessCount": 2,
+      "lastAccessed": 1775832059949,
+      "type": "file"
+    },
+    {
+      "path": "quality_diversity.py",
+      "accessCount": 2,
+      "lastAccessed": 1775832075589,
+      "type": "file"
+    },
+    {
+      "path": "CODEX_HANDOFF_SCOPE.md",
+      "accessCount": 2,
+      "lastAccessed": 1775835076259,
+      "type": "file"
+    },
+    {
+      "path": "USE_CASES.md",
+      "accessCount": 2,
+      "lastAccessed": 1775835097587,
+      "type": "file"
+    },
+    {
+      "path": "OPTIMIZATION_NEXT_TASKS.md",
+      "accessCount": 2,
+      "lastAccessed": 1775835097646,
+      "type": "file"
+    },
+    {
+      "path": "budget_allocator.py",
+      "accessCount": 2,
+      "lastAccessed": 1775837184969,
+      "type": "file"
+    },
+    {
+      "path": "DEPLOY_PRIVATE_AUDIT.md",
+      "accessCount": 1,
+      "lastAccessed": 1775827248469,
+      "type": "file"
+    },
+    {
+      "path": "update.md",
+      "accessCount": 1,
+      "lastAccessed": 1775827248529,
+      "type": "file"
+    },
+    {
+      "path": "chienluoc.md",
+      "accessCount": 1,
+      "lastAccessed": 1775827248803,
+      "type": "file"
+    },
+    {
+      "path": "PORTABLE_SETUP.md",
+      "accessCount": 1,
+      "lastAccessed": 1775827248879,
+      "type": "file"
+    },
+    {
+      "path": "TEAM_SHARING.md",
+      "accessCount": 1,
+      "lastAccessed": 1775827249105,
+      "type": "file"
+    },
+    {
+      "path": "DEVELOPER_THINKING_LOG.md",
+      "accessCount": 1,
+      "lastAccessed": 1775827249170,
+      "type": "file"
+    },
+    {
+      "path": ".graphify_merge.py",
+      "accessCount": 1,
+      "lastAccessed": 1775827751982,
+      "type": "file"
+    },
+    {
+      "path": "graphify-out\\GRAPH_REPORT.md",
+      "accessCount": 1,
+      "lastAccessed": 1775828140975,
+      "type": "file"
+    },
+    {
+      "path": "generator.py",
+      "accessCount": 1,
+      "lastAccessed": 1775828849764,
+      "type": "file"
+    },
+    {
+      "path": "pipeline.py",
+      "accessCount": 1,
+      "lastAccessed": 1775828849985,
+      "type": "file"
+    },
+    {
+      "path": "alpha_seeds.py",
+      "accessCount": 1,
+      "lastAccessed": 1775828851005,
+      "type": "file"
+    },
+    {
+      "path": "deploy\\AGENTS.md",
+      "accessCount": 1,
+      "lastAccessed": 1775828941811,
+      "type": "file"
+    },
+    {
+      "path": "schemas\\AGENTS.md",
+      "accessCount": 1,
+      "lastAccessed": 1775828943049,
+      "type": "file"
+    },
+    {
+      "path": "scripts\\AGENTS.md",
+      "accessCount": 1,
+      "lastAccessed": 1775828944285,
+      "type": "file"
+    },
+    {
+      "path": "tests\\AGENTS.md",
+      "accessCount": 1,
+      "lastAccessed": 1775828945499,
+      "type": "file"
+    },
+    {
+      "path": "outline.yaml",
+      "accessCount": 1,
+      "lastAccessed": 1775830855114,
+      "type": "file"
+    },
+    {
+      "path": "C:\\Users\\Hoang\\.claude\\skills",
+      "accessCount": 1,
+      "lastAccessed": 1775830869965,
+      "type": "directory"
+    },
+    {
+      "path": "C:\\Users\\Hoang\\.claude\\skills\\research",
+      "accessCount": 1,
+      "lastAccessed": 1775830882494,
+      "type": "directory"
+    },
+    {
+      "path": "C:\\Users\\Hoang\\.claude\\skills\\research\\validate_json.py",
+      "accessCount": 1,
+      "lastAccessed": 1775830892176,
+      "type": "file"
+    },
+    {
+      "path": "alpha_ast.py",
+      "accessCount": 1,
+      "lastAccessed": 1775832030091,
+      "type": "file"
+    },
+    {
+      "path": "alpha_candidate.py",
+      "accessCount": 1,
+      "lastAccessed": 1775832030203,
+      "type": "file"
+    },
+    {
+      "path": "tests",
+      "accessCount": 1,
+      "lastAccessed": 1775832093980,
+      "type": "directory"
+    },
+    {
+      "path": "validator.py",
+      "accessCount": 1,
+      "lastAccessed": 1775832156165,
+      "type": "file"
+    },
+    {
+      "path": ".env.example",
+      "accessCount": 1,
+      "lastAccessed": 1775834049694,
+      "type": "file"
+    }
+  ],
+  "userDirectives": []
+}

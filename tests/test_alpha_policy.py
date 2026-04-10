@@ -10,6 +10,20 @@ from alpha_policy import (
     passes_quality_gate_v2,
     robust_quality_score,
     should_simulate_candidate,
+    detect_survivorship_bias,
+    detect_lookahead_bias,
+    detect_survivorship_and_lookahead,
+    estimate_ic_stability,
+    passes_ic_stability,
+    pre_submission_gate,
+    pre_submission_gate_from_result,
+)
+
+from alpha_ranker import (
+    count_unique_lookbacks,
+    expression_complexity_penalty,
+    complexity_score,
+    passes_complexity_check,
 )
 
 
@@ -107,3 +121,176 @@ class AlphaPolicyTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# ============================================================
+# Tier-1 Acceptance Gate Tests
+# ============================================================
+
+class BiasDetectionTests(unittest.TestCase):
+
+    def test_survivorship_bias_raw_close_flagged(self):
+        """Raw close without rank/protection should be flagged."""
+        self.assertTrue(detect_survivorship_bias("close - ts_mean(close, 20)"))
+
+    def test_survivorship_bias_safe_with_rank(self):
+        """Rank() neutralises survivorship bias risk."""
+        self.assertFalse(detect_survivorship_bias("rank(close - ts_mean(close, 20))"))
+
+    def test_survivorship_bias_safe_with_group_neutralize(self):
+        self.assertFalse(detect_survivorship_bias(
+            "group_neutralize(close, sector)"))
+
+    def test_survivorship_bias_safe_with_winsorize(self):
+        self.assertFalse(detect_survivorship_bias(
+            "winsorize(returns, lower=0.01, upper=0.99)"))
+
+    def test_lookahead_bias_negative_delay(self):
+        """ts_delay with negative delta is future leak."""
+        self.assertTrue(detect_lookahead_bias("ts_delay(close, -5)"))
+
+    def test_lookahead_bias_negative_ts_delta(self):
+        self.assertTrue(detect_lookahead_bias("ts_delta(returns, -3)"))
+
+    def test_lookahead_bias_ts_delta_zero(self):
+        """ts_delta with 0 delay ≈ current value, borderline but flagged."""
+        self.assertTrue(detect_lookahead_bias("ts_delta(volume, 0)"))
+
+    def test_lookahead_bias_normal_positive_delay_ok(self):
+        self.assertFalse(detect_lookahead_bias("ts_delay(close, 5)"))
+
+    def test_combined_bias_check_pass(self):
+        safe = "rank(ts_mean(returns, 20))"
+        result = detect_survivorship_and_lookahead(safe)
+        self.assertTrue(result["passed"])
+        self.assertEqual(result["bias_flags"], "")
+
+    def test_combined_bias_check_fail_survivorship(self):
+        risky = "ts_delta(close, 5) / volume"
+        result = detect_survivorship_and_lookahead(risky)
+        self.assertFalse(result["passed"])
+        self.assertTrue(result["survivorship_bias"])
+        self.assertIn("survivorship_bias", result["bias_flags"])
+
+
+class ICStabilityTests(unittest.TestCase):
+
+    def test_ic_stability_consistent_sharpe_fitness(self):
+        """Consistent Sharpe/fitness → high stability."""
+        score = estimate_ic_stability(sharpe=1.5, fitness=1.4, turnover=20, sub_sharpe=-1.0)
+        self.assertGreater(score, 0.40)
+
+    def test_ic_stability_degraded_by_high_fitness_sharpe_gap(self):
+        """Fitness >> Sharpe suggests IS curve-fit."""
+        high_gap = estimate_ic_stability(sharpe=1.0, fitness=2.5, turnover=20, sub_sharpe=-1.0)
+        consistent = estimate_ic_stability(sharpe=1.5, fitness=1.4, turnover=20, sub_sharpe=-1.0)
+        self.assertLess(high_gap, consistent)
+
+    def test_ic_stability_penalised_by_high_turnover(self):
+        high_to = estimate_ic_stability(sharpe=1.5, fitness=1.4, turnover=70, sub_sharpe=-1.0)
+        low_to = estimate_ic_stability(sharpe=1.5, fitness=1.4, turnover=20, sub_sharpe=-1.0)
+        self.assertLess(high_to, low_to)
+
+    def test_ic_stability_penalised_by_negative_sub_sharpe(self):
+        neg_sub = estimate_ic_stability(sharpe=1.5, fitness=1.4, turnover=20, sub_sharpe=-0.5)
+        neutral_sub = estimate_ic_stability(sharpe=1.5, fitness=1.4, turnover=20, sub_sharpe=-1.0)
+        self.assertLess(neg_sub, neutral_sub)
+
+    def test_passes_ic_stability_gate(self):
+        self.assertTrue(passes_ic_stability(1.5, 1.4, 20, -1.0))
+        # Poor IC stability should fail with default floor=0.15
+        self.assertFalse(passes_ic_stability(0.8, 0.5, 70, -0.3))
+
+    def test_passes_ic_stability_custom_floor(self):
+        # Even a decent score should fail with an unrealistically high floor
+        self.assertFalse(passes_ic_stability(2.0, 1.8, 20, -1.0, floor=0.99))
+
+
+class PreSubmissionGateTests(unittest.TestCase):
+
+    def _gate(self, expr, sharpe=1.5, fitness=1.4, turnover=20, sub_sharpe=-1.0, error=""):
+        return pre_submission_gate(expr, sharpe, fitness, turnover, sub_sharpe, error)
+
+    def test_passes_valid_expression(self):
+        good = "rank(ts_corr(ts_zscore(close), ts_zscore(volume), 20))"
+        result = self._gate(good)
+        self.assertTrue(result["passed"])
+        self.assertEqual(result["stage"], "passed")
+
+    def test_rejects_runtime_error(self):
+        result = self._gate("rank(close)", error="Division by zero")
+        self.assertFalse(result["passed"])
+        self.assertEqual(result["stage"], "runtime_error")
+
+    def test_rejects_bias_detection(self):
+        risky = "ts_delta(close, 5) / volume"
+        result = self._gate(risky)
+        self.assertFalse(result["passed"])
+        self.assertEqual(result["stage"], "bias_detection")
+
+    def test_rejects_ic_instability(self):
+        # High turnover + poor sub_sharpe → IC unstable
+        result = self._gate("rank(ts_mean(returns, 20))", sharpe=1.2, fitness=1.1, turnover=70, sub_sharpe=-0.2)
+        self.assertFalse(result["passed"])
+        self.assertEqual(result["stage"], "ic_stability")
+
+    def test_wrapper_from_result(self):
+        class FakeResult:
+            expression = "rank(ts_mean(returns, 20))"
+            sharpe = 1.6
+            fitness = 1.5
+            turnover = 25
+            sub_sharpe = -1.0
+            error = ""
+        result = pre_submission_gate_from_result(FakeResult())
+        self.assertTrue(result["passed"])
+
+
+class ComplexityScoringTests(unittest.TestCase):
+
+    def test_simple_expression_has_low_penalty(self):
+        simple = "rank(close)"
+        penalty = expression_complexity_penalty(simple)
+        self.assertEqual(penalty, 0.0)
+
+    def test_over_nested_expression_penalised(self):
+        # 8 levels deep
+        nested = "a(b(c(d(e(f(g(h(x))))))))"
+        penalty = expression_complexity_penalty(nested)
+        self.assertGreater(penalty, 0)
+
+    def test_lookback_proliferation_penalised(self):
+        """Many distinct lookback constants → suspicious."""
+        many_lbs = "rank(ts_mean(close,3) + ts_mean(close,5) + ts_mean(close,7) + ts_mean(close,10) + ts_mean(close,14) + ts_mean(close,20))"
+        penalty = expression_complexity_penalty(many_lbs)
+        self.assertGreater(penalty, 0)
+
+    def test_complexity_score_returns_full_dict(self):
+        expr = "rank(ts_delta(close, 5))"
+        result = complexity_score(expr)
+        self.assertIn("score", result)
+        self.assertIn("depth", result)
+        self.assertIn("n_ops", result)
+        self.assertIn("unique_lookbacks", result)
+        self.assertIn("penalty", result)
+        self.assertGreaterEqual(result["score"], 0.0)
+        self.assertLessEqual(result["score"], 1.0)
+
+    def test_count_unique_lookbacks(self):
+        self.assertEqual(count_unique_lookbacks("f(3) + f(5) + f(3) + f(5)"), 2)
+        self.assertEqual(count_unique_lookbacks("f(x)"), 0)
+
+    def test_passes_complexity_check_simple(self):
+        simple = "rank(close)"
+        self.assertTrue(passes_complexity_check(simple))
+
+    def test_passes_complexity_check_complex(self):
+        complex_expr = "a(b(c(d(e(f(g(h(i(x))))))))))"
+        self.assertFalse(passes_complexity_check(complex_expr))
+
+    def test_rank_score_penalty_applied(self):
+        """Expression that is both over-nested and has many lookbacks should be penalised."""
+        expr = "a(b(c(d(e(f(g(h(close)))))))) + g(a(1)) + g(a(2)) + g(a(3)) + g(a(4)) + g(a(5)) + g(a(6))"
+        score_with_penalty = complexity_score(expr)["score"]
+        simple_score = complexity_score("rank(close)")["score"]
+        self.assertLess(score_with_penalty, simple_score)

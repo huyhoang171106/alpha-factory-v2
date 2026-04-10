@@ -127,7 +127,7 @@ class AlphaGenerator:
         self.generation_mode = (generation_mode or os.getenv("GENERATOR_MODE", "legacy")).strip().lower()
 
     def _load_hypotheses(self) -> List[dict]:
-        path = os.path.join(os.path.dirname(__file__), "..", "data", "hypotheses", "iqc_core.json")
+        path = os.path.join(os.path.dirname(__file__), "data", "hypotheses", "iqc_core.json")
         if os.path.exists(path):
             with open(path, 'r', encoding='utf-8') as f:
                 return json.load(f)

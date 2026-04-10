@@ -174,6 +174,97 @@ def has_time_comparison(expr: str) -> bool:
     return any(op in expr for op in ["ts_delay", "ts_delta", "ts_corr", "ts_regression"])
 
 
+# ============================================================
+# Tier-1: Expression Complexity Scoring
+# ============================================================
+
+# Thresholds derived from WQ acceptance research:
+# - >5 unique lookback windows → suspicious overfitting
+# - >3 nesting levels deep → fragile
+# - >8 operators → untrustworthy
+MAX_UNIQUE_LOOKBACKS = 5
+MAX_NESTING_DEPTH = 3
+MAX_OPERATORS = 8
+
+
+def count_unique_lookbacks(expr: str) -> int:
+    """Count distinct numeric lookback constants in expression."""
+    numbers = re.findall(r'\b\d+\b', expr)
+    return len(set(numbers))
+
+
+def expression_complexity_penalty(expr: str) -> float:
+    """
+    Return a penalty (positive float) to subtract from score.
+
+    Research finding: simpler expressions with better OOS stability
+    have higher acceptance rates on WQ Brain.
+    """
+    depth = count_nesting_depth(expr)
+    n_ops = count_operators(expr)
+    unique_lookbacks = count_unique_lookbacks(expr)
+
+    penalty = 0.0
+
+    # Nesting depth penalty
+    if depth > 6:
+        penalty += 15.0
+    elif depth > MAX_NESTING_DEPTH:
+        penalty += 5.0 * (depth - MAX_NESTING_DEPTH)
+
+    # Operator count penalty
+    if n_ops > 8:
+        penalty += 10.0
+    elif n_ops > MAX_OPERATORS:
+        penalty += 5.0 * (n_ops - MAX_OPERATORS)
+
+    # Lookback proliferation penalty
+    if unique_lookbacks > MAX_UNIQUE_LOOKBACKS:
+        penalty += 8.0 * (unique_lookbacks - MAX_UNIQUE_LOOKBACKS)
+
+    return penalty
+
+
+def complexity_score(expression: str) -> dict:
+    """
+    Score expression simplicity / robustness.
+    Returns dict with: score (0-1), depth, n_ops, unique_lookbacks,
+    penalty, and flags.
+    """
+    depth = count_nesting_depth(expression)
+    n_ops = count_operators(expression)
+    unique_lookbacks = count_unique_lookbacks(expression)
+    penalty = expression_complexity_penalty(expression)
+
+    # Score: 1.0 = simple/robust, 0.0 = dangerously complex
+    base_score = 1.0 - min(penalty / 30.0, 1.0)
+
+    flags: list[str] = []
+    if depth > 6:
+        flags.append("over_nested")
+    if n_ops > 8:
+        flags.append("too_many_ops")
+    if unique_lookbacks > MAX_UNIQUE_LOOKBACKS:
+        flags.append("lookback_proliferation")
+
+    return {
+        "score": max(0.0, min(1.0, base_score)),
+        "depth": depth,
+        "n_ops": n_ops,
+        "unique_lookbacks": unique_lookbacks,
+        "penalty": penalty,
+        "flags": flags,
+    }
+
+
+EXPRESSION_COMPLEXITY_FLOOR = float(os.getenv("ASYNC_COMPLEXITY_MIN", "0.55"))
+
+
+def passes_complexity_check(expression: str, floor: float = EXPRESSION_COMPLEXITY_FLOOR) -> bool:
+    """Gate: reject overly complex expressions."""
+    return complexity_score(expression)["score"] >= floor
+
+
 def score_expression(expr: str) -> Tuple[float, str]:
     """
     Score an alpha expression from 0-100.
@@ -286,6 +377,12 @@ def score_expression(expr: str) -> Tuple[float, str]:
     if re.match(simple_seed_pattern, expr.strip()):
         score -= 25
         reasons.append("-basic_seed")
+
+    # === TIER-1 COMPLEXITY PENALTY ===
+    complexity_penalty = expression_complexity_penalty(expr)
+    if complexity_penalty > 0:
+        score -= complexity_penalty
+        reasons.append(f"-{complexity_penalty:.0f}:complexity")
 
     # Clamp to 0-100
     score = max(0.0, min(100.0, score))

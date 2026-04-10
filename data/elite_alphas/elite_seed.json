@@ -1,0 +1,1766 @@
+[
+  {
+    "expression": "-rank(ts_delta(close, 5))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "-ts_corr(rank(open), rank(volume), 10)",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "-Ts_Rank(rank(low), 9)",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "(rank((open - (ts_sum(vwap, 10) / 10))) * (-1 * abs(rank((close - vwap)))))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "(-1 * rank(((ts_sum(open, 5) * ts_sum(returns, 5)) - ts_delay((ts_sum(open, 5) * ts_sum(returns, 5)), 10))))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "((rank(ts_max((vwap - close), 3)) + rank(ts_min((vwap - close), 3))) * rank(ts_delta(volume, 3)))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "(sign(ts_delta(volume, 1)) * (-1 * ts_delta(close, 1)))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "(-1 * rank(ts_covariance(rank(close), rank(volume), 5)))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "((-1 * rank(ts_delta(returns, 3))) * ts_corr(open, volume, 10))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "(-1 * ts_sum(rank(ts_corr(rank(high), rank(volume), 3)), 3))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "(-1 * rank(ts_covariance(rank(high), rank(volume), 5)))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "(-1 * rank(((ts_std_dev(abs((close - open)), 5) + (close - open)) + ts_corr(close, open,10))))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "(((-1 * rank((open - ts_delay(high, 1)))) * rank((open - ts_delay(close, 1)))) * rank((open - ts_delay(low, 1))))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "(-1 * (ts_delta(ts_corr(high, volume, 5), 5) * rank(ts_std_dev(close, 20))))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(((((-1 * returns) * ts_mean(volume,20)) * vwap) * (high - close)))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "(-1 * ts_max(ts_corr(ts_rank(volume, 5), ts_rank(high, 5), 5), 3))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "scale(((ts_corr(ts_mean(volume,20), low, 5) + ((high + low) / 2)) - close))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "(((1.0 - rank(((sign((close - ts_delay(close, 1))) + sign((ts_delay(close, 1) - ts_delay(close, 2)))) + sign((ts_delay(close, 2) - ts_delay(close, 3)))))) * ts_sum(volume, 5)) / ts_sum(volume, 20))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank((-1 * ((1 - (open / close))^1)))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "((Ts_Rank(volume, 32) * (1 - Ts_Rank(((close + high) - low), 16))) * (1 - Ts_Rank(returns, 32)))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "(rank(ts_corr(ts_delay((open - close), 1), close, 200)) + rank((open - close)))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "((-1 * rank(Ts_Rank(close, 10))) * rank((close / open)))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "(-1 * rank(ts_std_dev(high, 10))) * ts_corr(high, volume, 10)",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "(((high * low)^0.5) - vwap)",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "(rank((vwap - close)) / rank((vwap + close)))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "(ts_rank((volume / ts_mean(volume,20)), 20) * ts_rank((-1 * ts_delta(close, 7)), 8))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "(-1 * ts_corr(high, rank(volume), 5))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "((close - open) / ((high - low) + 0.001))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "log(pasteurize(vwap/close))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "-rank(ts_delta(close, 10))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "-rank(ts_delta(close, 20))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(ts_mean(returns, 20))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(ts_mean(returns, 60))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(close / ts_delay(close, 20) - 1)",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(volume / ts_mean(volume, 20))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(volume / adv20) * rank(returns)",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(close / vwap - 1)",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "-rank(abs(close - vwap) / vwap)",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "-rank(ts_std_dev(returns, 5) / ts_std_dev(returns, 20))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(ts_std_dev(close, 5) / ts_std_dev(close, 60))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank((close - open) / (high - low + 0.001))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "-rank((high - close) / (high - low + 0.001))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(ts_mean(volume, 5) / ts_mean(volume, 60))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(open / ts_delay(close, 1) - 1)",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "-rank((high - low) / ts_mean(high - low, 20))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "group_neutralize(volume/(ts_sum(volume,60)/60),sector)",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(close+ts_product(close, 5)^(0.2))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "ts_corr(rank(close), rank(volume/(ts_sum(volume,20)/20)), 5)",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(group_mean(ts_delta(close,5),1,subindustry)-ts_delta(close,5))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "-ts_rank((ts_regression(close,close,20,LAG=1,RETTYPE=3)-ts_sum(ts_delay(close,1),2)/2)/close,60)*(1-rank(volume/(ts_sum(volume,30)/30)))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "-ts_sum(close-min(low,ts_delay(close,1)),5)/ts_sum(max(high,ts_delay(close,1))-low,5)",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "-rank(close-ts_max(high,5))/(ts_max(high,5)-ts_min(low,5))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "signed_power(Ts_Rank((vwap - ts_max(vwap, 15)), 21), ts_delta(close,5))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "-Ts_Rank(ts_decay_linear(ts_corr(group_neutralize(vwap, sector), volume, 4), 8), 6)",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "-rank(ts_mean(abs(returns) / (volume + 1), 20))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "-rank(ts_mean(abs(returns) / (adv20 + 1), 60))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(abs(ts_delta(close, 1)) / (volume + 1))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "-rank(ts_mean(abs(ts_delta(close, 1)) / (volume + 1), 10))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(ts_sum(returns * volume, 5) / (ts_sum(abs(returns) * volume, 5) + 0.001))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(ts_sum(returns * volume, 10) / (ts_sum(abs(returns) * volume, 10) + 0.001))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "-rank(ts_corr(abs(returns), volume, 10))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "-rank(ts_corr(abs(ts_delta(close, 1)), ts_delta(volume, 1), 5))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank((high - low) / (volume + 1))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "-rank(ts_mean((high - low) / (adv20 + 1), 20))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(ts_delta(volume, 1) / (adv20 + 1))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(ts_mean(close / vwap - 1, 5))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "-rank(abs(ts_mean(close / vwap - 1, 10)))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(ts_sum(sign(ts_delta(close, 1)), 5))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(ts_sum(sign(ts_delta(close, 1)) * volume, 5) / ts_sum(volume, 5))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(volume / adv20) * (-rank(abs(returns)))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(open / ts_delay(close, 1) - 1) * (-rank(close / open - 1))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "-rank(ts_delta(volume / adv20, 5))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "-rank((high - low) / (open + 0.001))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(close - floor(close))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "(-rank(ts_delta(close, 1))) * rank(ts_delta(volume, 1))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(ts_mean(volume / sharesout, 20))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "-rank(ts_delta(volume / sharesout, 5))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(returns) * (-rank(ts_delta(volume, 5)))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "-rank(ts_corr(volume / adv20, abs(returns), 10))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "-rank(ts_std_dev(returns, 60))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "-rank(ts_std_dev(returns, 20))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(ts_corr(close, ts_rank(close, 60), 20))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(ts_corr(returns, ts_rank(returns, 20), 10))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "-rank(ts_corr(returns, ts_delay(returns, 1), 20))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(ts_mean(returns, 60) / (ts_std_dev(returns, 60) + 0.001))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(ts_mean(returns, 20) / (ts_std_dev(returns, 20) + 0.001))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "-rank(ts_std_dev(volume / adv20, 20))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "-rank(ts_std_dev((high - low) / close, 20))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(ts_sum(sign(close - ts_mean(close, 20)), 20))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(ts_sum(sign(close - ts_mean(close, 60)), 20))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(close / ts_min(low, 20))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(close - ts_min(close, 20))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(ts_mean(returns, 5) - ts_mean(returns, 60))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "-rank(ts_std_dev(high - low, 20) / ts_mean(high - low, 20))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "-rank(ts_std_dev(close / vwap - 1, 20))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(ts_mean(sign(returns), 20))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(ts_corr(returns, ts_delay(returns, 5), 10))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "-rank(ts_skewness(returns, 60))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "-rank(ts_std_dev(volume, 20) / ts_mean(volume, 20))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(ts_sum(sign(returns), 10)) * (-rank(ts_std_dev(returns, 10)))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(abs(ts_sum(sign(ts_delta(close, 1)), 20)) / 20)",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(close / ts_max(high, 252))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(close / ts_max(close, 120))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "-rank(ts_max(high, 252) / close - 1)",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "-rank(close / ts_delay(close, 252))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(-(close / ts_delay(close, 252) - 1))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(ts_mean(returns, 5) - ts_mean(returns, 20))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "-rank(ts_mean(returns, 3)) * rank(ts_mean(volume / adv20, 3))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "(-rank(abs(returns))) * rank(volume / adv20)",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "-rank(ts_mean(returns, 20)) * rank(ts_std_dev(returns, 5))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(1 - (close - floor(close)))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "-rank(ts_min(returns, 5))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "-rank(ts_mean(ts_min(returns, 1), 5))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(ts_mean(returns, 60) - ts_mean(returns, 252))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "-rank(ts_corr(volume / adv20, returns, 10)) * rank(ts_mean(returns, 20))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(ts_mean(returns, 5)) * rank(ts_mean(volume / adv20, 5))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "-rank(ts_std_dev(returns, 20)) * rank(ts_sum(sign(returns > 0.05), 20))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "-rank(ts_max(abs(returns), 20))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(ts_delta(close, 20) - group_mean(ts_delta(close, 20), 1, industry))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(close / open - 1)",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank((close - open) / (0.001 + ts_mean(high - low, 20)))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(ts_delta(high - low, 5))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank((high - low) / ts_mean(high - low, 20) - 1)",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(ts_delta(close, 5) - group_mean(ts_delta(close, 5), 1, sector))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(returns - group_mean(returns, 1, subindustry))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "group_rank(rank(ts_mean(returns, 20)), 1, sector)",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "group_rank(rank(ts_mean(returns, 60)), 1, industry)",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "group_neutralize(rank(close / vwap), sector)",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "group_neutralize(rank(close / ts_mean(close, 20)), industry)",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(returns) - group_mean(rank(returns), 1, sector)",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(ts_mean(returns, 10)) - group_mean(rank(ts_mean(returns, 10)), 1, industry)",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "group_neutralize(rank(volume / adv20), sector)",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(volume / adv20) - group_mean(rank(volume / adv20), 1, industry)",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "-rank(ts_corr(returns, group_mean(returns, 1, sector), 20))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "-rank(ts_corr(returns, group_mean(returns, 1, industry), 10))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "group_mean(rank(ts_delta(close, 5)), 1, subindustry) - rank(ts_delta(close, 5))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(ts_delta(volume / adv20, 5)) - group_mean(rank(ts_delta(volume / adv20, 5)), 1, sector)",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "group_rank(rank(close / ts_delay(close, 20) - 1), 1, industry)",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(close / ts_delay(close, 60) - 1) - group_mean(rank(close / ts_delay(close, 60) - 1), 1, sector)",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "group_neutralize(rank(ts_mean(returns, 20) / (ts_std_dev(returns, 20) + 0.001)), sector)",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "-rank(ts_delta(group_mean(returns, 1, sector), 5))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(close / vwap) - group_mean(rank(close / vwap), 1, industry)",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "group_neutralize(rank(close / ts_mean(close, 60)), subindustry)",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "group_neutralize(rank(ts_mean(returns, 20)), subindustry)",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "-group_rank(rank(ts_mean(returns, 20)), 1, sector)",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(returns) * (-rank(ts_corr(returns, group_mean(returns, 1, sector), 5)))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(ts_std_dev(returns, 5)) * (-rank(ts_delta(close, 5)))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "-rank(ts_std_dev(returns, 5)) * rank(ts_mean(returns, 20))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(ts_corr(returns, ts_delta(volume, 1), 10)) * rank(ts_mean(returns, 20))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(volume / adv20) * rank(ts_mean(returns, 10))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(ts_max(high, 5) / ts_min(low, 5)) * rank(ts_delta(volume, 5))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(ts_delta(high - low, 5)) * rank(ts_delta(volume, 5))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(abs(ts_mean(returns, 20)) / ts_std_dev(returns, 20))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(ts_corr(close, ts_rank(close, 20), 20))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(ts_mean(returns, 10)) * rank(ts_delta(adv20, 5))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "-rank(ts_delta(close, 3)) * rank(ts_std_dev(returns, 5) / ts_std_dev(returns, 20))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "-rank(ts_std_dev(returns, 5)) * rank(ts_delta(volume / adv20, 10))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(open / ts_delay(close, 1) - 1) * rank(volume / adv20)",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(ts_mean(returns, 20)) * rank(abs(ts_mean(returns, 20)) / ts_std_dev(returns, 20))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "-rank(ts_delta(volume / adv20, 5)) * rank(close / ts_max(close, 20))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(ts_std_dev(returns, 5) / ts_std_dev(returns, 60))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "-rank(ts_std_dev(returns, 5) / ts_std_dev(returns, 60))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(abs(ts_sum(sign(ts_delta(close, 1)), 10)) / 10) * rank(ts_delta(close, 10))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "-rank(returns) * rank(ts_std_dev(returns, 5)) * rank(volume / adv20)",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "(-rank(ts_std_dev(returns, 5))) * rank(ts_delta(volume, 5))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(ts_sum(sign(ts_delta(close, 1)) * volume, 10) / ts_sum(volume, 10))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(ts_mean(returns, 20)) * rank(ts_mean(volume / sharesout, 20))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(ts_corr(ts_rank(close, 20), ts_rank(volume, 20), 10))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "-rank(ts_corr(ts_rank(close, 20), ts_rank(volume, 20), 10))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(ts_rank(close, 20)) * (-rank(ts_corr(returns, ts_delay(returns, 1), 5)))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "-rank(close / (eps + 0.001))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "-rank(cap / (sales + 1))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "-rank(cap / (book_value + 1))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "-rank(cap / (ebitda + 1))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(eps / (cap + 1))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(sales / cap)",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(ebitda / (cap + 1))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(sales / book_value)",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(ebitda / (book_value + 1))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(eps / (book_value + 1))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(ts_delta(sales, 60))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(ts_delta(eps, 60))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(ts_delta(ebitda, 60))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "-rank(ts_delta(debt, 60))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "group_neutralize(-rank(cap / (sales + 1)), sector)",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "group_neutralize(-rank(cap / (book_value + 1)), sector)",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "group_neutralize(rank(eps / (cap + 1)), sector)",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "group_neutralize(rank(sales / cap), industry)",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "-rank(cap / (sales + 1)) * rank(ts_mean(returns, 20))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(eps / (cap + 1)) * rank(ts_mean(returns, 60))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(sign(eps))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(sign(ts_delta(eps, 60)))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(sign(ts_delta(sales, 60)))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "-rank(sign(ts_delta(debt, 60)))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "-rank((ebitda - ts_delay(ebitda, 60)) / (cap + 1))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "-rank(cap)",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "group_neutralize(-rank(cap), sector)",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "-rank(ts_delta(close / (eps + 0.001), 20))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "-rank(ts_delta(close / (book_value + 1), 20))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(returns - group_mean(returns, 1, sector))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "group_neutralize(rank(returns - group_mean(returns, 1, market)), subindustry)",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "-rank(ts_std_dev(returns - group_mean(returns, 1, sector), 20))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(ts_covariance(returns, volume / adv20, 20) / (ts_std_dev(volume / adv20, 20) + 0.001))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "-rank(close / ts_mean(close, 20) - group_mean(close / ts_mean(close, 20), 1, sector))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(ts_decay_linear(close, 12) - ts_decay_linear(close, 26))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(ts_mean(max(ts_delta(close, 1), 0), 14) / (ts_mean(abs(ts_delta(close, 1)), 14) + 0.001))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank((close - (ts_mean(close, 20) - 2 * ts_std_dev(close, 20))) / (4 * ts_std_dev(close, 20) + 0.001))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(ts_decay_linear(ts_decay_linear(ts_delta(close, 1), 5), 10))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(ts_arg_max(signed_power(((returns < 0) * ts_std_dev(returns, 20) + (returns >= 0) * close), 2), 5)) - 0.5",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "-ts_corr(rank(ts_delta(log(volume), 2)), rank((close - open) / (open + 0.001)), 6)",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(open - ts_mean(vwap, 10)) * (-abs(rank(close - vwap)))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "((adv20 < volume) * (-ts_rank(abs(ts_delta(close, 7)), 60)) * sign(ts_delta(close, 7))) + ((adv20 >= volume) * -1)",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "((0 < ts_min(ts_delta(close, 1), 5)) * ts_delta(close, 1)) + ((ts_max(ts_delta(close, 1), 5) < 0) * ts_delta(close, 1)) + ((ts_min(ts_delta(close, 1), 5) <= 0) * (ts_max(ts_delta(close, 1), 5) >= 0) * -ts_delta(close, 1))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "(rank(ts_max(vwap - close, 3)) + rank(ts_min(vwap - close, 3))) * rank(ts_delta(volume, 3))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "sign(ts_delta(volume, 1)) * (-ts_delta(close, 1))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "(-rank(ts_rank(close, 10))) * rank(ts_delta(ts_delta(close, 1), 1)) * rank(ts_rank(volume / adv20, 5))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank((-returns * adv20 * vwap * (high - close)))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "scale(ts_corr(adv20, low, 5) + (high + low) / 2 - close)",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "(1 - rank(sign(close - ts_delay(close, 1)) + sign(ts_delay(close, 1) - ts_delay(close, 2)) + sign(ts_delay(close, 2) - ts_delay(close, 3)))) * ts_sum(volume, 5) / ts_sum(volume, 20)",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(-((1 - open / (close + 0.001))))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(1 - rank(ts_std_dev(returns, 2) / (ts_std_dev(returns, 5) + 0.001)) + (1 - rank(ts_delta(close, 1))))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "ts_rank(volume, 32) * (1 - ts_rank((close + high - low), 16)) * (1 - ts_rank(returns, 32))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(ts_corr(ts_delay(open - close, 1), close, 200)) + rank(open - close)",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "(-rank(ts_rank(close, 10))) * rank(close / (open + 0.001))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "(-rank(ts_std_dev(high, 10))) * ts_corr(high, volume, 10)",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "signed_power(high * low, 0.5) - vwap",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(vwap - close) / (rank(vwap + close) + 0.001)",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "ts_rank(volume / adv20, 20) * ts_rank(-ts_delta(close, 7), 8)",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "-ts_delta(((close - low) - (high - close)) / (close - low + 0.001), 9)",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "-(low - close) * power(open, 5) / ((low - high) * power(close, 5) + 0.001)",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "-ts_corr(rank((close - ts_min(low, 12)) / (ts_max(high, 12) - ts_min(low, 12) + 0.001)), rank(volume), 6)",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "(close - open) / ((high - low) + 0.001)",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "trade_when(rank(ts_delta(close, 5)), volume > adv20, 0)",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "trade_when(-rank(ts_delta(close, 3)), ts_std_dev(returns, 10) > ts_mean(ts_std_dev(returns, 10), 40), 0)",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "group_rank(ts_delta(close, 5), bucket(rank(cap), range='0,1,0.2'))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "group_zscore(returns, bucket(rank(volume), range='0,1,0.25'))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(winsorize(ts_delta(close, 10), std=3))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "group_neutralize(rank(winsorize(ts_zscore(returns, 20), std=4)), sector)",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "ts_quantile(close, 20) * rank(volume / adv20)",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "ts_quantile(returns, 30, driver='cauchy')",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "hump(rank(ts_delta(close, 5)), hump=0.01)",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "hump(rank(ts_std_dev(returns, 10)), hump=0.02)",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(ts_scale(close, 20)) - 0.5",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "ts_scale(volume, 20) * rank(ts_delta(close, 1))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(ts_av_diff(close, 20))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "-rank(ts_av_diff(volume, 10)) * rank(returns)",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "normalize(ts_delta(close, 5) * rank(volume))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "vector_neut(rank(ts_delta(close, 5)), rank(returns))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(days_from_last_change(close)) * -rank(ts_delta(close, 1))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "rank(jump_decay(close, 20, sensitivity=0.5, force=0.1))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "scale(rank(ts_delta(close, 10)) * rank(volume / adv20))",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  },
+  {
+    "expression": "group_neutralize(winsorize(ts_quantile(returns, 20) * rank(ts_av_diff(close, 10)), std=3), industry)",
+    "sharpe": 1.25,
+    "fitness": 1.0,
+    "turnover": 50,
+    "source": "internal_seeds"
+  }
+]

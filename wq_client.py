@@ -337,9 +337,15 @@ class WQClient:
             result.passed_checks = sum(1 for c in checks if c.get('result') == 'PASS')
             result.all_passed = result.passed_checks == result.total_checks
 
+            # Parse sub_universe_sharpe from any variant of the check name
             for check in checks:
-                if check.get('name') == 'LOW_SUB_UNIVERSE_SHARPE':
-                    result.sub_sharpe = check.get('value', -1)
+                name = check.get('name', '').lower()
+                if 'sub_universe' in name and 'sharpe' in name:
+                    raw = check.get('value', None)
+                    if raw is not None:
+                        result.sub_sharpe = float(raw)
+                        logger.info(f"  📌 Sub-universe Sharpe: {result.sub_sharpe:.3f}")
+                        break
 
             status = "✅ PASS" if result.all_passed else f"⚠️ {result.passed_checks}/{result.total_checks}"
             logger.info(

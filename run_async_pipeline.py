@@ -22,10 +22,10 @@ from types import SimpleNamespace
 from typing import Dict, Tuple
 
 from generator import AlphaGenerator
-from alpha_ranker import score_expression
+from alpha_ranker import score_expression, passes_complexity_check
 from tracker import AlphaTracker
 from wq_client import WQClient
-from alpha_policy import estimate_competition_priority, passes_quality_gate_v2, should_simulate_candidate
+from alpha_policy import estimate_competition_priority, passes_quality_gate_v2, should_simulate_candidate, pre_submission_gate_from_result, pre_submission_gate
 from alpha_candidate import AlphaCandidate
 from alpha_ast import parameter_agnostic_signature
 from submit_governor import SubmitGovernor
@@ -108,6 +108,7 @@ class AsyncAlphaFactory:
             "submitted": 0,
             "dead_lettered": 0,
             "rejected": 0,
+            "gate_rejections": 0,
             "archive_updates": 0,
             "accepted_review": 0,
             "rejected_review": 0,
@@ -144,6 +145,8 @@ class AsyncAlphaFactory:
             return False, "collinear"
         if not should_simulate_candidate(cand.expression, min_critic_score=MIN_CRITIC_SCORE):
             return False, "low_critic_score"
+        if not passes_complexity_check(cand.expression):
+            return False, "complexity_check_failed"
         score, _ = score_expression(cand.expression)
         if score < self.pre_rank_score:  # cheap pre-ranker
             return False, "low_score"
@@ -318,6 +321,22 @@ class AsyncAlphaFactory:
                         novelty, descriptor = self.qd_archive.novelty_score(res.expression)
                         self.pending_signatures.discard(parameter_agnostic_signature(res.expression))
 
+                        # Tier-1 pre-submission gate: bias detection + IC stability + complexity
+                        gate = pre_submission_gate_from_result(res)
+                        if not gate["passed"]:
+                            self.tracker.mark_rejected_by_id(row_id, reason=f"gate:{gate['stage']}:{gate['reason']}")
+                            self.stats["rejected"] += 1
+                            self.stats["gate_rejections"] += 1
+                            self.allocator.update(arm, 0.0)
+                            self.qd_archive.maybe_update_archive(
+                                res.expression,
+                                quality=(0.40 * quality_norm),
+                                novelty=novelty,
+                                descriptor=descriptor,
+                            )
+                            logger.info(f"🚫 [GATE] D{res.delay} rejected={gate['stage']} | {res.expression[:60]}")
+                            continue
+
                         if passes_quality_gate_v2(res):
                             self.tracker.mark_gated_by_id(row_id)
                             logger.info(f"💎 [SUCCESS] D{res.delay} Sharpe={res.sharpe:.2f} | {res.expression[:60]}")
@@ -343,7 +362,8 @@ class AsyncAlphaFactory:
                             res.competition_priority = estimate_competition_priority(res)
                             passed_results.append(res)
                         else:
-                            self.tracker.mark_rejected_by_id(row_id, reason=getattr(res, "error", "") or "quality_gate_failed")
+                            # Caught by passes_quality_gate_v2 after gate passed (fallback)
+                            self.tracker.mark_rejected_by_id(row_id, reason="quality_gate_failed")
                             self.stats["rejected"] += 1
                             self.allocator.update(arm, 0.0)
                             self.qd_archive.maybe_update_archive(
@@ -393,7 +413,7 @@ class AsyncAlphaFactory:
                 f"D1Pass: {self.stats['passed_d1']} | D0Pass: {self.stats['passed_d0']} | "
                 f"Queued: {self.stats['queued']} | Submitted: {self.stats['submitted']} | "
                 f"Accepted: {self.stats['accepted_review']} | ReviewReject: {self.stats['rejected_review']} | "
-                f"Rejected: {self.stats['rejected']} | DLQ: {self.stats['dead_lettered']} | "
+                f"Rejected: {self.stats['rejected']} (gate:{self.stats['gate_rejections']}) | DLQ: {self.stats['dead_lettered']} | "
                 f"QD cells: {qd_stats['elite_cells']} (+{self.stats['archive_updates']}) | "
                 f"Rate: {throughput:.1f} alpha/h | gate={kpi['gate_pass_rate']:.1%} "
                 f"submit={kpi['submit_success_rate']:.1%} submit_ok={kpi['submit_ok_rate']:.1%} "
