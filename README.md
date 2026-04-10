@@ -131,6 +131,7 @@ Detailed checklist:
 - `USE_CASES.md`
 - `.github/PULL_REQUEST_TEMPLATE.md`
 - `SECURITY.md`
+- `ACTIONS_BUDGET.md`
 
 ## Automation Targets
 
