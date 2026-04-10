@@ -100,6 +100,15 @@ class AlphaGenerator:
         },
     }
 
+    COMPETITION_TEMPLATES = [
+        # Patterns that historically produce higher Sharpe in this project.
+        "rank(days_from_last_change(close)) * -rank(ts_delta(close, 1))",
+        "group_neutralize(rank(-rank(returns)), subindustry) * rank(rank((volume - adv20) / adv20))",
+        "rank(ts_arg_max(signed_power(((returns < 0) * ts_std_dev(returns, 20) + (returns >= 0) * close), 2), 5)) - 0.5",
+        "group_neutralize(rank(ts_mean(returns, 10) / (ts_std_dev(returns, 10) + 0.001)), subindustry)",
+        "-ts_rank(ts_corr(rank(returns), rank(volume), 10), 25)",
+    ]
+
     def __init__(
         self,
         dna_weights: DNAWeights = None,
@@ -215,9 +224,11 @@ class AlphaGenerator:
         # Borrowed from BRAIN community tips:
         # - regression_neut() to orthogonalize core signal vs broad-market drift
         # - pasteurize() for cross-universe robustness in cross-sectional ops
-        if random.random() < 0.22:
+        adv_prob = float(os.getenv("ASYNC_HYPO_ADV_WRAP_PROB", "0.10"))
+        adv_prob = max(0.0, min(0.5, adv_prob))
+        if random.random() < adv_prob:
             base_signal = f"regression_neut({base_signal}, ts_mean(returns, {d_filter}))"
-        if random.random() < 0.28:
+        if random.random() < adv_prob:
             filter_signal = f"pasteurize({filter_signal})"
 
         combined = f"rank({base_signal}) * rank({filter_signal})"
@@ -230,6 +241,15 @@ class AlphaGenerator:
         smoothed = f"ts_decay_linear({directional}, {decay})"
         group_expr = self._choose_neutralization_group()
         return f"group_neutralize({smoothed}, {group_expr})"
+
+    def _build_competition_template_expression(self) -> str:
+        """
+        Wrap historically stronger templates into the enforced structural shell.
+        """
+        raw = random.choice(self.COMPETITION_TEMPLATES)
+        decay = random.choice([4, 5, 6, 7])
+        group_expr = self._choose_neutralization_group()
+        return f"group_neutralize(ts_decay_linear(({raw}), {decay}), {group_expr})"
 
     @staticmethod
     def _choose_neutralization_group() -> str:
@@ -258,8 +278,10 @@ class AlphaGenerator:
 
         while len(results) < n and attempts < max_attempts:
             attempts += 1
+            template_ratio = float(os.getenv("ASYNC_HYPO_TEMPLATE_RATIO", "0.35"))
+            template_ratio = max(0.0, min(0.8, template_ratio))
             hypothesis = random.choice(hypotheses)
-            expr = self._build_hypothesis_expression(hypothesis)
+            expr = self._build_competition_template_expression() if random.random() < template_ratio else self._build_hypothesis_expression(hypothesis)
             if not self._is_structurally_valid_hypothesis_expr(expr):
                 continue
 

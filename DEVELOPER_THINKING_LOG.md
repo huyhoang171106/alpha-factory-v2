@@ -24,3 +24,8 @@ Tags: ops-monitoring,regression,watchdog,throughput,qualifier
 Executed final full-suite validation before deploy. Fixed test collection instability by disabling doctest text collection (pytest.ini). Fixed legacy dna-bias test to align with AlphaCandidate output and force deterministic non-RAG generation. Added runtime operational safeguards for live engine: short-cadence local profile, bounded queues, simulator batch watchdog timeout, and env-overridable gate thresholds for qualifier throughput. Live monitoring confirmed process recovery after timeout events and continued progression instead of hard stalls.
 
 Tags: final-validation,deploy,timeout-mitigation,testing,operations
+
+## 2026-04-10T06:21:04Z - Sharpe>=2 drought investigation and tuning
+Investigated user report that no Sharpe>=2 alphas appear. Queried SQLite metrics: last 6h max sharpe=1.92, last 1h max=1.07, zero observations >=2. Added quality-focused generator tuning by injecting competition templates and reducing over-complex wrappers. Relaxed turnover cap to 75 to avoid discarding high-sharpe candidates near 70+ turnover. Continued runtime hardening with timeout watchdog schema fix (added region/universe/decay/neutralization fields for timeout placeholders) after live error in save_result path. Rolling restarts confirmed pipeline continuity with timeout recovery; however external API latency still causes long single-sim waits, so Sharpe throughput remains bottlenecked by remote simulation cycle.
+
+Tags: sharpe-drought,generator-tuning,timeout-watchdog,runtime-ops

@@ -275,6 +275,10 @@ class AsyncAlphaFactory:
                                 alpha_url="",
                                 error="simulate_batch_timeout",
                                 sub_sharpe=-1.0,
+                                region="USA",
+                                universe="TOP3000",
+                                decay=6,
+                                neutralization="SUBINDUSTRY",
                                 delay=delay,
                             )
                             row_id = self.tracker.save_result(timeout_result, candidate=cand)
