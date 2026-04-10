@@ -130,10 +130,29 @@ Detailed checklist:
 - `DEPLOY_PRIVATE_AUDIT.md`
 - `CODEX_HANDOFF_SCOPE.md`
 - `USE_CASES.md`
+- `HANDOVER_DETAILED.md`
+- `OPTIMIZATION_NEXT_TASKS.md`
 - `.github/PULL_REQUEST_TEMPLATE.md`
 - `SECURITY.md`
 - `ACTIONS_BUDGET.md`
 - `TEAM_SHARING.md`
+
+## Agent Onboarding (Read First)
+
+For any coding agent/new contributor, read in this order before changing runtime logic:
+1. `README.md` (this file)
+2. `HANDOVER_DETAILED.md`
+3. `CODEX_HANDOFF_SCOPE.md`
+4. `USE_CASES.md`
+5. `SECURITY.md`
+6. `TEAM_SHARING.md`
+7. `OPTIMIZATION_NEXT_TASKS.md`
+
+Required constraints for agents:
+- Keep repo private and never output secrets.
+- Never publish alpha expressions, alpha IDs, or raw WQ payloads.
+- Preserve submit semantics: `submitted` != `accepted`.
+- Keep CLI contract backward-compatible unless explicitly approved.
 
 ## Automation Targets
 
