@@ -56,7 +56,8 @@ from budget_allocator import BudgetAllocator, RegimeAwareArmSelector
 # Standalone execution should behave like the CLI's local profile unless the
 # caller already provided explicit environment overrides.
 _LOCAL_RUNTIME_DEFAULTS = {
-    "ASYNC_MIN_CRITIC_SCORE": "0.40",
+    "ASYNC_MIN_CRITIC_SCORE": "0.30",
+    "ASYNC_COMPLEXITY_MIN": "0.40",
     "ASYNC_ROBUST_SCORE_MIN": "1.00",
     "ASYNC_MIN_SHARPE": "1.25",
     "ASYNC_MIN_FITNESS": "0.80",
@@ -90,9 +91,7 @@ BATCH_SIZE = max(1, int(os.getenv("ASYNC_BATCH_SIZE", "12")))
 PRE_RANK_THRESHOLD = 55.0  # raised from 50: filter harder before WQ sim
 NOVELTY_WINDOW = 12000
 NOVELTY_MIN = float(os.getenv("ASYNC_NOVELTY_MIN", "0.28"))
-MIN_CRITIC_SCORE = float(
-    os.getenv("ASYNC_MIN_CRITIC_SCORE", "0.45")
-)  # raised from 0.38
+MIN_CRITIC_SCORE = float(os.getenv("ASYNC_MIN_CRITIC_SCORE", "0.30"))
 GEN_BATCH_SIZE = max(5, int(os.getenv("ASYNC_GEN_BATCH_SIZE", "20")))
 ASYNC_USE_RAG = os.getenv("ASYNC_USE_RAG", "0").strip().lower() in ("1", "true", "yes")
 TIER1_MIN_QUALITY = float(os.getenv("ASYNC_TIER1_MIN_QUALITY", "0.50"))

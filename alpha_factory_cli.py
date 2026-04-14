@@ -40,7 +40,8 @@ PROFILE_DEFAULTS = {
         "ASYNC_GEN_BATCH_SIZE": "12",
         "ASYNC_GEN_QUEUE_SIZE": "240",
         "ASYNC_SIM_QUEUE_SIZE": "120",
-        "ASYNC_MIN_CRITIC_SCORE": "0.40",
+        "ASYNC_MIN_CRITIC_SCORE": "0.30",
+        "ASYNC_COMPLEXITY_MIN": "0.40",
         "ASYNC_ROBUST_SCORE_MIN": "1.00",
         "ASYNC_MIN_SHARPE": "1.25",
         "ASYNC_MIN_FITNESS": "0.80",
@@ -51,7 +52,7 @@ PROFILE_DEFAULTS = {
         "ASYNC_ENABLE_D0": "1",
         "ASYNC_D1_SHARE": "0.90",
         "ASYNC_HYPO_TEMPLATE_RATIO": "0.35",
-        "ASYNC_HYPO_ADV_WRAP_PROB": "0.10",
+        "ASYNC_HYPO_ADV_WRAP_PROB": "0.00",
         "ASYNC_SIM_BATCH_TIMEOUT": "600",
         "WQ_MAX_CONCURRENT": "1",
         "WQ_MAX_WAIT_TIME": "600",
@@ -86,7 +87,9 @@ def _default_global_bin_dir() -> Path:
 
 
 def _path_contains(target: Path) -> bool:
-    entries = [p.strip().lower() for p in os.getenv("PATH", "").split(os.pathsep) if p.strip()]
+    entries = [
+        p.strip().lower() for p in os.getenv("PATH", "").split(os.pathsep) if p.strip()
+    ]
     return str(target.resolve()).lower() in entries
 
 
@@ -204,12 +207,16 @@ def _profile_env(profile: str) -> dict[str, str]:
     if profile == "local" and os.getenv("ALPHA_ALLOW_UNSAFE_PACING") != "1":
         sim_workers = int(merged.get("ASYNC_SIMULATOR_WORKERS", "1"))
         if sim_workers > 1:
-            print(f"[safety] local profile: capping ASYNC_SIMULATOR_WORKERS=1 (current={sim_workers}). Set ALPHA_ALLOW_UNSAFE_PACING=1 to override.")
+            print(
+                f"[safety] local profile: capping ASYNC_SIMULATOR_WORKERS=1 (current={sim_workers}). Set ALPHA_ALLOW_UNSAFE_PACING=1 to override."
+            )
             merged["ASYNC_SIMULATOR_WORKERS"] = "1"
 
         max_concurrent = int(merged.get("WQ_MAX_CONCURRENT", "1"))
         if max_concurrent > 2:
-            print(f"[safety] local profile: capping WQ_MAX_CONCURRENT=2 (current={max_concurrent}) for stability.")
+            print(
+                f"[safety] local profile: capping WQ_MAX_CONCURRENT=2 (current={max_concurrent}) for stability."
+            )
             merged["WQ_MAX_CONCURRENT"] = "2"
 
     return merged
@@ -229,7 +236,9 @@ def ensure_requirements() -> None:
         print("[warn] requirements.txt not found, skip installation.")
         return
     print("[setup] installing requirements...")
-    code = _run([str(py), "-m", "pip", "install", "--upgrade", "pip", "setuptools", "wheel"])
+    code = _run(
+        [str(py), "-m", "pip", "install", "--upgrade", "pip", "setuptools", "wheel"]
+    )
     if code != 0:
         raise RuntimeError("Failed to upgrade pip tooling")
     code = _run([str(py), "-m", "pip", "install", "-r", str(REQ_FILE)])
@@ -255,7 +264,14 @@ def bootstrap(skip_install: bool = False) -> None:
     ensure_env()
 
 
-def run_pipeline(continuous: bool, submit: bool, candidates: int, cooldown: int, max_submit: int, pre_rank: float) -> int:
+def run_pipeline(
+    continuous: bool,
+    submit: bool,
+    candidates: int,
+    cooldown: int,
+    max_submit: int,
+    pre_rank: float,
+) -> int:
     py = _venv_python()
     cmd = [
         str(py),
@@ -277,7 +293,9 @@ def run_pipeline(continuous: bool, submit: bool, candidates: int, cooldown: int,
     return _run(cmd)
 
 
-def run_async_pipeline(limit: int, score: float, use_rag: bool, profile: str = "local") -> int:
+def run_async_pipeline(
+    limit: int, score: float, use_rag: bool, profile: str = "local"
+) -> int:
     py = _venv_python()
     cmd = [
         str(py),
@@ -310,7 +328,9 @@ def run_local_hybrid(profile: str = "local") -> int:
     sync_limit = max(1, int(env.get("LOCAL_HYBRID_SYNC_LIMIT", "40")))
     restart_backoff = max(5, int(env.get("LOCAL_HYBRID_RESTART_BACKOFF", "20")))
     score = float(env.get("LOCAL_HYBRID_SCORE", "50"))
-    lock_path = Path(env.get("LOCAL_SINGLETON_LOCKFILE", str(ROOT / "results" / "local_auto.lock")))
+    lock_path = Path(
+        env.get("LOCAL_SINGLETON_LOCKFILE", str(ROOT / "results" / "local_auto.lock"))
+    )
 
     lock_fd = _acquire_singleton_lock(lock_path)
     if lock_fd is None:
@@ -351,14 +371,18 @@ def run_local_hybrid(profile: str = "local") -> int:
                         tracker = AlphaTracker()
                         kpi = tracker.minute_kpis(lookback_minutes=60)
                         tracker.close()
-                        print(f"[hybrid] kpi gate={kpi.get('gate_pass_rate', 0.0):.1%} submit={kpi.get('submit_success_rate', 0.0):.1%}")
+                        print(
+                            f"[hybrid] kpi gate={kpi.get('gate_pass_rate', 0.0):.1%} submit={kpi.get('submit_success_rate', 0.0):.1%}"
+                        )
                     except Exception as exc:
                         print(f"[warn] hybrid kpi check failed: {exc}")
                     last_kpi = now
                 time.sleep(5)
 
             code = int(proc.returncode or 0)
-            print(f"[hybrid] engine exited with code={code}; restarting in {restart_backoff}s")
+            print(
+                f"[hybrid] engine exited with code={code}; restarting in {restart_backoff}s"
+            )
             time.sleep(restart_backoff)
     except KeyboardInterrupt:
         print("[hybrid] stop requested")
@@ -395,7 +419,9 @@ def run_public_report(minutes: int, out_path: str) -> int:
         tracker.close()
     output = Path(out_path)
     output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(json.dumps(payload, ensure_ascii=True, indent=2), encoding="utf-8")
+    output.write_text(
+        json.dumps(payload, ensure_ascii=True, indent=2), encoding="utf-8"
+    )
     print(f"[ok] public report exported to {output}")
     return 0
 
@@ -408,9 +434,7 @@ def append_thinking_log(title: str, note: str, tags: str = "") -> int:
     ts = datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
     tag_line = f"\nTags: {tags}" if tags else ""
     entry = (
-        f"\n## {ts} - {title.strip() or 'Session Note'}\n"
-        f"{note.strip()}\n"
-        f"{tag_line}\n"
+        f"\n## {ts} - {title.strip() or 'Session Note'}\n{note.strip()}\n{tag_line}\n"
     )
     if not log_path.exists():
         header = (
@@ -495,7 +519,7 @@ def run_ab_safe(
         "legs": [],
     }
     for i in range(max(1, int(cycles))):
-        print(f"[ab-safe] cycle {i+1}/{cycles} leg A (D1 share={d1_share_a:.2f})")
+        print(f"[ab-safe] cycle {i + 1}/{cycles} leg A (D1 share={d1_share_a:.2f})")
         leg_a = _run_timed_async_leg(
             profile=profile,
             score=score,
@@ -506,7 +530,7 @@ def run_ab_safe(
         leg_a["cycle"] = i + 1
         report["legs"].append(leg_a)
 
-        print(f"[ab-safe] cycle {i+1}/{cycles} leg B (D1 share={d1_share_b:.2f})")
+        print(f"[ab-safe] cycle {i + 1}/{cycles} leg B (D1 share={d1_share_b:.2f})")
         leg_b = _run_timed_async_leg(
             profile=profile,
             score=score,
@@ -573,19 +597,23 @@ def run_ab_rag(
     print(f"\n[ok] ab-rag report generated: {out}")
 
     # Preliminary command-line analysis
-    print("\n" + "="*40)
+    print("\n" + "=" * 40)
     print("      A/B COMPARISON PREVIEW")
-    print("="*40)
+    print("=" * 40)
     for leg in report["legs"]:
         kpi = leg.get("kpi", {})
         print(f"Leg {leg['label']} ({leg['run_id']}):")
         print(f"  Simulated: {kpi.get('simulated', 0)}")
-        print(f"  Gated:     {kpi.get('gated', 0)} ({kpi.get('gate_pass_rate', 0.0):.1%})")
+        print(
+            f"  Gated:     {kpi.get('gated', 0)} ({kpi.get('gate_pass_rate', 0.0):.1%})"
+        )
         print(f"  Accepted:  {kpi.get('accepted', 0)}")
-    print("="*40)
+    print("=" * 40)
 
     # Suggest running the full comparison script
-    print(f"\n[hint] Run 'python compare_reports.py --a {run_id_a} --b {run_id_b}' for deep analysis.")
+    print(
+        f"\n[hint] Run 'python compare_reports.py --a {run_id_a} --b {run_id_b}' for deep analysis."
+    )
     return 0
 
 
@@ -627,7 +655,9 @@ def parse_args() -> argparse.Namespace:
     p_setup.add_argument("--skip-install", action="store_true", help="skip pip install")
 
     p_start = sub.add_parser("start", help="bootstrap then run pipeline")
-    p_start.add_argument("--burst", action="store_true", help="run one burst instead of continuous")
+    p_start.add_argument(
+        "--burst", action="store_true", help="run one burst instead of continuous"
+    )
     p_start.add_argument("--no-submit", action="store_true", help="run without submit")
     p_start.add_argument("--candidates", type=int, default=60)
     p_start.add_argument("--cooldown", type=int, default=60)
@@ -636,15 +666,29 @@ def parse_args() -> argparse.Namespace:
     p_start.add_argument("--skip-install", action="store_true")
 
     p_async = sub.add_parser("async", help="run async streaming pipeline")
-    p_async.add_argument("--limit", type=int, default=0, help="stop after N simulations (0 = run forever)")
+    p_async.add_argument(
+        "--limit",
+        type=int,
+        default=0,
+        help="stop after N simulations (0 = run forever)",
+    )
     p_async.add_argument("--score", type=float, default=50.0, help="min pre-rank score")
-    p_async.add_argument("--use-rag", action="store_true", help="enable RAG in async producer")
-    p_async.add_argument("--profile", choices=["local", "vps", "gha"], default="local", help="runtime profile")
+    p_async.add_argument(
+        "--use-rag", action="store_true", help="enable RAG in async producer"
+    )
+    p_async.add_argument(
+        "--profile",
+        choices=["local", "vps", "gha"],
+        default="local",
+        help="runtime profile",
+    )
     p_async.add_argument("--skip-install", action="store_true")
 
     p_auto = sub.add_parser("auto", help="one-click auto mode for local/vps/gha")
     p_auto.add_argument("--profile", choices=["local", "vps", "gha"], default="local")
-    p_auto.add_argument("--no-hybrid", action="store_true", help="disable local hybrid supervisor mode")
+    p_auto.add_argument(
+        "--no-hybrid", action="store_true", help="disable local hybrid supervisor mode"
+    )
     p_auto.add_argument("--skip-install", action="store_true")
 
     p_replay = sub.add_parser("replay-dlq", help="requeue dead-lettered submit jobs")
@@ -653,14 +697,20 @@ def parse_args() -> argparse.Namespace:
     p_kpi = sub.add_parser("kpi", help="print minute-level KPIs")
     p_kpi.add_argument("--minutes", type=int, default=60)
 
-    p_sync_submit = sub.add_parser("sync-submit", help="poll WQ review status for submitted alphas")
+    p_sync_submit = sub.add_parser(
+        "sync-submit", help="poll WQ review status for submitted alphas"
+    )
     p_sync_submit.add_argument("--limit", type=int, default=30)
 
-    p_public = sub.add_parser("public-report", help="export sanitized public-safe KPI report")
+    p_public = sub.add_parser(
+        "public-report", help="export sanitized public-safe KPI report"
+    )
     p_public.add_argument("--minutes", type=int, default=60)
     p_public.add_argument("--out", default="results/public_report.json")
 
-    p_ab = sub.add_parser("ab-safe", help="safe cadence A/B compare (no parallel submit collision)")
+    p_ab = sub.add_parser(
+        "ab-safe", help="safe cadence A/B compare (no parallel submit collision)"
+    )
     p_ab.add_argument("--profile", choices=["local", "vps", "gha"], default="local")
     p_ab.add_argument("--score", type=float, default=50.0)
     p_ab.add_argument("--minutes-per-leg", type=int, default=10)
@@ -673,7 +723,9 @@ def parse_args() -> argparse.Namespace:
     p_rag = sub.add_parser("compare-rag", help="A/B test: Normal vs RAG generation")
     p_rag.add_argument("--profile", choices=["local", "vps", "gha"], default="local")
     p_rag.add_argument("--score", type=float, default=50.0)
-    p_rag.add_argument("--minutes-per-leg", type=int, default=180, help="minutes per leg (default 3h)")
+    p_rag.add_argument(
+        "--minutes-per-leg", type=int, default=180, help="minutes per leg (default 3h)"
+    )
     p_rag.add_argument("--out", default="results/ab_rag_report.json")
     p_rag.add_argument("--skip-install", action="store_true")
 
@@ -682,9 +734,13 @@ def parse_args() -> argparse.Namespace:
     p_tlog.add_argument("--note", required=True)
     p_tlog.add_argument("--tags", default="")
 
-    p_install = sub.add_parser("install-global", help="install global command wrapper (alpha)")
+    p_install = sub.add_parser(
+        "install-global", help="install global command wrapper (alpha)"
+    )
     p_install.add_argument("--name", default="alpha")
-    p_install.add_argument("--bin-dir", default="", help="optional custom directory for command wrapper")
+    p_install.add_argument(
+        "--bin-dir", default="", help="optional custom directory for command wrapper"
+    )
 
     sub.add_parser("test", help="run unit tests")
     sub.add_parser("zip", help="create clean portable zip")
@@ -725,7 +781,12 @@ def main() -> int:
 
         if command == "async":
             bootstrap(skip_install=args.skip_install)
-            return run_async_pipeline(limit=args.limit, score=args.score, use_rag=args.use_rag, profile=args.profile)
+            return run_async_pipeline(
+                limit=args.limit,
+                score=args.score,
+                use_rag=args.use_rag,
+                profile=args.profile,
+            )
 
         if command == "auto":
             bootstrap(skip_install=args.skip_install)
@@ -733,14 +794,18 @@ def main() -> int:
                 limit = int(os.getenv("GHA_BURST_LIMIT", "80"))
                 score = float(os.getenv("GHA_PRE_RANK_SCORE", "50"))
                 sync_limit = int(os.getenv("GHA_SYNC_LIMIT", "40"))
-                code = run_async_pipeline(limit=limit, score=score, use_rag=False, profile="gha")
+                code = run_async_pipeline(
+                    limit=limit, score=score, use_rag=False, profile="gha"
+                )
                 if code != 0:
                     return code
                 return run_sync_submit(limit=sync_limit)
             if args.profile == "local" and not args.no_hybrid:
                 return run_local_hybrid(profile="local")
             # local/vps defaults run continuous engine mode
-            return run_async_pipeline(limit=0, score=50.0, use_rag=False, profile=args.profile)
+            return run_async_pipeline(
+                limit=0, score=50.0, use_rag=False, profile=args.profile
+            )
 
         if command == "replay-dlq":
             tracker = AlphaTracker()
