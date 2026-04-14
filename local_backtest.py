@@ -190,10 +190,11 @@ class MarketData:
         return os.path.join(self.cache_dir, "market_data.parquet")
 
     def _is_cache_valid(self) -> bool:
-        path = self._cache_path()
-        if not os.path.exists(path):
+        # Check for at least one of the field parquet files
+        sample_path = os.path.join(self.cache_dir, "close.parquet")
+        if not os.path.exists(sample_path):
             return False
-        age = datetime.now() - datetime.fromtimestamp(os.path.getmtime(path))
+        age = datetime.now() - datetime.fromtimestamp(os.path.getmtime(sample_path))
         return age.days < CACHE_TTL_DAYS
 
     def load(self) -> Dict[str, pd.DataFrame]:
