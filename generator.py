@@ -40,6 +40,11 @@ from alpha_policy import (
     compute_arm_budget_ratio,
     estimate_self_corr_risk,
 )
+from validator import (
+    normalize_expression_aliases,
+    supports_local_backtest_expression,
+    validate_expression,
+)
 
 try:
     from alpha_rag import RAGMutator
@@ -129,9 +134,9 @@ class AlphaGenerator:
 
     COMPETITION_TEMPLATES = [
         # Patterns that historically produce higher Sharpe in this project.
-        "rank(days_from_last_change(close)) * -rank(ts_delta(close, 1))",
+        "rank(ts_arg_min(close, 5)) * -rank(ts_delta(close, 1))",
         "group_neutralize(rank(-rank(returns)), subindustry) * rank(rank((volume - adv20) / adv20))",
-        "rank(ts_arg_max(signed_power(((returns < 0) * ts_std_dev(returns, 20) + (returns >= 0) * close), 2), 5)) - 0.5",
+        "rank(ts_arg_max(signed_power(abs(returns) * ts_std_dev(returns, 20) + close, 2), 5)) - 0.5",
         "group_neutralize(rank(ts_mean(returns, 10) / (ts_std_dev(returns, 10) + 0.001)), subindustry)",
         "-ts_rank(ts_corr(rank(returns), rank(volume), 10), 25)",
     ]
@@ -192,6 +197,15 @@ class AlphaGenerator:
         mutation_type: str = "seed",
         family: str = "",
     ) -> bool:
+        expr = normalize_expression_aliases(expr.strip())
+        is_valid, _ = validate_expression(expr)
+        if not is_valid:
+            return False
+        if self._require_local_bt_support():
+            is_supported, _ = supports_local_backtest_expression(expr)
+            if not is_supported:
+                return False
+
         # ---- Self-corr risk guard ----
         # Reject high-risk candidates before they enter the pipeline.
         # This prevents WQ quota waste on structurally autocorrelated alphas.
@@ -213,6 +227,16 @@ class AlphaGenerator:
                 candidate.hypothesis = self._current_hypothesis
             results.append(candidate)
             return True
+        return False
+
+    @staticmethod
+    def _require_local_bt_support() -> bool:
+        raw = os.getenv("GEN_REQUIRE_LOCAL_BT_SUPPORT")
+        if raw is not None:
+            return raw.strip().lower() in ("1", "true", "yes")
+        raw = os.getenv("ASYNC_LOCAL_BT")
+        if raw is not None:
+            return raw.strip().lower() in ("1", "true", "yes")
         return False
 
     def _get_biased_lookback(self, range_type: str = "mid") -> int:
@@ -541,19 +565,19 @@ class AlphaGenerator:
             (
                 "mean_reversion_advanced",
                 lambda: (
-                    f"group_neutralize(ts_decay_linear((rank(days_from_last_change(close)) * -rank(ts_delta(close, {self._get_biased_lookback('short')}))), subindustry)"
+                    f"group_neutralize(ts_decay_linear(-rank(ts_delta(close, {self._get_biased_lookback('short')})), 5), subindustry)"
                 ),
             ),
             (
                 "mean_reversion_advanced",
                 lambda: (
-                    f"group_neutralize(ts_rank(rank(days_from_last_change(close)) * -returns, {self._get_biased_lookback('mid')}), industry)"
+                    f"group_neutralize(ts_rank(-rank(ts_delta(close, {self._get_biased_lookback('short')})) * rank(volume / adv20), {self._get_biased_lookback('mid')}), industry)"
                 ),
             ),
             (
                 "mean_reversion_advanced",
                 lambda: (
-                    f"-rank(ts_decay_linear(days_from_last_change(returns > 0), 5)) * rank(returns)"
+                    f"-rank(ts_decay_linear(ts_delta(close, {self._get_biased_lookback('short')}), 5)) * rank(volume / adv20)"
                 ),
             ),
             # --- LIQUIDITY (Top Performers) ---

@@ -1,3 +1,4 @@
+import asyncio
 import unittest
 
 from alpha_candidate import AlphaCandidate
@@ -31,7 +32,11 @@ class FakeClient:
 
 class FakeGenerator:
     def generate_batch(self, n=50, use_rag=False):
-        return [AlphaCandidate(expression="group_neutralize(ts_zscore(ts_corr(close, volume, 20), 10), industry)")]
+        return [
+            AlphaCandidate(
+                expression="group_neutralize(ts_zscore(ts_corr(close, volume, 20), 10), industry)"
+            )
+        ]
 
 
 class FakeGovernor:
@@ -75,7 +80,9 @@ class AsyncPipelineTests(unittest.TestCase):
         factory = self.make_factory()
         expr = "group_neutralize(ts_zscore(ts_corr(close, volume, 20), 10), industry)"
         first, _ = factory.qd_archive.novelty_score(expr)
-        factory.qd_archive.maybe_update_archive(expr, quality=1.0, novelty=first, descriptor="g|c|d|e|mid|industry")
+        factory.qd_archive.maybe_update_archive(
+            expr, quality=1.0, novelty=first, descriptor="g|c|d|e|mid|industry"
+        )
         second, _ = factory.qd_archive.novelty_score(expr)
         self.assertGreater(first, second)
 
@@ -102,9 +109,11 @@ class AsyncPipelineTests(unittest.TestCase):
     def test_acceptance_priors_shift_ev_for_high_accept_arm(self):
         """Arms updated with high p_accept should receive higher EV than cold-start arm."""
         factory = self.make_factory()
-        factory.allocator.update_acceptance_priors({
-            "llm": {"accepted": 9, "resolved": 10, "p_accept": 0.90},
-        })
+        factory.allocator.update_acceptance_priors(
+            {
+                "llm": {"accepted": 9, "resolved": 10, "p_accept": 0.90},
+            }
+        )
         ev_hot = factory.allocator.expected_value("llm", 0.6, 0.5)
         ev_cold = factory.allocator.expected_value("deterministic", 0.6, 0.5)
         # llm arm has p_accept=0.90, deterministic has p_accept=0.5 (prior)
@@ -113,8 +122,12 @@ class AsyncPipelineTests(unittest.TestCase):
 
     def test_continuous_reward_orders_good_result_above_bad_result(self):
         factory = self.make_factory()
-        good = FakeResult(sharpe=1.8, fitness=1.4, turnover=20, drawdown=0.03, sub_sharpe=0.2)
-        weak = FakeResult(sharpe=-0.4, fitness=-0.2, turnover=80, drawdown=0.25, sub_sharpe=-0.3)
+        good = FakeResult(
+            sharpe=1.8, fitness=1.4, turnover=20, drawdown=0.03, sub_sharpe=0.2
+        )
+        weak = FakeResult(
+            sharpe=-0.4, fitness=-0.2, turnover=80, drawdown=0.25, sub_sharpe=-0.3
+        )
 
         self.assertGreater(
             factory._simulation_reward(good),
@@ -131,13 +144,15 @@ class AsyncPipelineTests(unittest.TestCase):
         before_quality = factory.allocator.tier1_min_quality
         before_ev = factory.allocator.min_expected_value
 
-        reason = factory.adapt_runtime_gates({
-            "accepted": 0,
-            "rejected_after_submit": 0,
-            "queued": 0,
-            "dlq_rate": 0.0,
-            "true_accept_rate": 0.0,
-        })
+        reason = factory.adapt_runtime_gates(
+            {
+                "accepted": 0,
+                "rejected_after_submit": 0,
+                "queued": 0,
+                "dlq_rate": 0.0,
+                "true_accept_rate": 0.0,
+            }
+        )
 
         self.assertEqual(reason, "relax_starved")
         self.assertLess(factory.dynamic_pre_rank_score, before_rank)
@@ -150,13 +165,15 @@ class AsyncPipelineTests(unittest.TestCase):
         before_quality = factory.allocator.tier1_min_quality
         before_ev = factory.allocator.min_expected_value
 
-        reason = factory.adapt_runtime_gates({
-            "accepted": 1,
-            "rejected_after_submit": 12,
-            "queued": 2,
-            "dlq_rate": 0.0,
-            "true_accept_rate": 1 / 13,
-        })
+        reason = factory.adapt_runtime_gates(
+            {
+                "accepted": 1,
+                "rejected_after_submit": 12,
+                "queued": 2,
+                "dlq_rate": 0.0,
+                "true_accept_rate": 1 / 13,
+            }
+        )
 
         self.assertEqual(reason, "tighten_accept")
         self.assertGreater(factory.dynamic_pre_rank_score, before_rank)
@@ -168,22 +185,51 @@ class AsyncPipelineTests(unittest.TestCase):
         factory.dynamic_pre_rank_score = 50.0
         factory.stats["generated"] = 20
         factory.stats["simulated"] = 0
-        maxsize = getattr(factory.sim_queue, "maxsize", getattr(factory.sim_queue, "_maxsize", 300))
+        maxsize = getattr(
+            factory.sim_queue, "maxsize", getattr(factory.sim_queue, "_maxsize", 300)
+        )
         backlog_count = max(1, int(maxsize * 0.80))
         for i in range(backlog_count):
-            factory.sim_queue.put_nowait((1, i, AlphaCandidate(expression=f"rank(close + {i})")))
+            factory.sim_queue.put_nowait(
+                (1, i, AlphaCandidate(expression=f"rank(close + {i})"))
+            )
 
-        reason = factory.adapt_runtime_gates({
-            "accepted": 0,
-            "rejected_after_submit": 0,
-            "queued": 0,
-            "dlq_rate": 0.0,
-            "true_accept_rate": 0.0,
-        })
+        reason = factory.adapt_runtime_gates(
+            {
+                "accepted": 0,
+                "rejected_after_submit": 0,
+                "queued": 0,
+                "dlq_rate": 0.0,
+                "true_accept_rate": 0.0,
+            }
+        )
 
         self.assertEqual(reason, "hold")
         self.assertEqual(factory.dynamic_pre_rank_score, 50.0)
 
+    def test_invalid_expression_rejected_before_ranker_filters(self):
+        factory = self.make_factory()
+        accepted, reason, score = asyncio.run(
+            factory.should_accept_candidate(
+                AlphaCandidate(expression="if(close > open, 1, -1)")
+            )
+        )
+
+        self.assertFalse(accepted)
+        self.assertTrue(reason.startswith("invalid_expr:"))
+        self.assertEqual(score, 0.0)
+
+    def test_local_bt_unsupported_expression_rejected_before_ranker_filters(self):
+        factory = self.make_factory()
+        accepted, reason, score = asyncio.run(
+            factory.should_accept_candidate(
+                AlphaCandidate(expression="rank(close) < rank(open)")
+            )
+        )
+
+        self.assertFalse(accepted)
+        self.assertEqual(reason, "local_bt_unsupported:comparison_operator")
+        self.assertEqual(score, 0.0)
 
 
 if __name__ == "__main__":

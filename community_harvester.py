@@ -500,65 +500,67 @@ class CommunityHarvester:
     # Strategy 1: Operator Substitution Mutations
     # ─────────────────────────────────────────────────────────
 
-     # Semantic equivalence groups (single-entry pairs for clean substitution)
-     OPERATOR_EQUIVALENCE_GROUPS = [
-         ("ts_corr(", "ts_cov("),
-         ("ts_cov(", "ts_corr("),
-         ("decay_linear(", "ts_mean("),
-         ("ts_mean(", "decay_linear("),
-         ("rank(", "ts_zscore("),
-         ("ts_rank(", "ts_percentile("),
-     ]
+    # Semantic equivalence groups (single-entry pairs for clean substitution)
+    OPERATOR_EQUIVALENCE_GROUPS = [
+        ("ts_corr(", "ts_cov("),
+        ("ts_cov(", "ts_corr("),
+        ("decay_linear(", "ts_mean("),
+        ("ts_mean(", "decay_linear("),
+        ("rank(", "ts_zscore("),
+        ("ts_rank(", "ts_percentile("),
+    ]
 
-     def apply_operator_substitution(self, alpha_expr: str) -> list[str]:
-         """
-         For each outermost operator in the alpha that belongs to a semantic
-         equivalence group, replace it with its equivalent counterpart,
-         preserving all arguments intact.  Each substitution is built from
-         the original string (never from a previously-mutated result) to
-         prevent cascading cross-contamination between rules.
+    def apply_operator_substitution(self, alpha_expr: str) -> list[str]:
+        """
+        Replace top-level operators with semantic alternates while preserving
+        the original argument list and surrounding expression text.
+        """
+        original = alpha_expr.strip()
+        mutants: list[str] = []
 
-         Returns a list of mutated expressions (skips if nothing changed or
-         the result has unbalanced parentheses).
-         """
-         original = alpha_expr.strip()
-         mutants: list[str] = []
+        for old_op, new_op in self.OPERATOR_EQUIVALENCE_GROUPS:
+            i = 0
+            while i < len(original):
+                if original[i : i + len(old_op)] != old_op:
+                    i += 1
+                    continue
+                if i > 0 and original[i - 1].isalnum():
+                    i += 1
+                    continue
 
-         for old_op, new_op in self.OPERATOR_EQUIVALENCE_GROUPS:
-             i = 0
-             while i < len(original):
-                 if original[i:i + len(old_op)] == old_op:
-                     if i > 0 and original[i - 1].isalnum():
-                         i += 1
-                         continue
-                     # Depth check: scan chars to the LEFT of position i
-                     depth = 0
-                     for j in range(i):
-                         if original[j] == "(":  depth += 1
-                         elif original[j] == ")": depth -= 1
-                     if depth != 0:
-                         i += 1
-                         continue
-                     # Unified depth scan for arguments
-                     rest = original[i + len(old_op):]
-                     depth = 1
-                     arg_end = len(rest)
-                     for k, ch in enumerate(rest):
-                         if ch == "(":  depth += 1
-                         elif ch == ")":
-                             depth -= 1
-                             if depth == 0:
-                                 arg_end = k
-                                 break
-                     args = rest[:arg_end]
-                     mutant = original[:i] + new_op + args
-                     if (mutant != original and
-                             mutant.count("(") == mutant.count(")")):
-                         mutants.append(mutant)
-                     i += len(old_op)
-                     continue
-                 i += 1
-         return mutants
+                depth = 0
+                for j in range(i):
+                    if original[j] == "(":
+                        depth += 1
+                    elif original[j] == ")":
+                        depth -= 1
+                if depth != 0:
+                    i += 1
+                    continue
+
+                rest = original[i + len(old_op) :]
+                depth = 1
+                arg_end = -1
+                for k, ch in enumerate(rest):
+                    if ch == "(":
+                        depth += 1
+                    elif ch == ")":
+                        depth -= 1
+                        if depth == 0:
+                            arg_end = k
+                            break
+                if arg_end == -1:
+                    i += len(old_op)
+                    continue
+
+                args = rest[:arg_end]
+                suffix = rest[arg_end + 1 :]
+                mutant = original[:i] + new_op + args + ")" + suffix
+                if mutant != original and mutant.count("(") == mutant.count(")"):
+                    mutants.append(mutant)
+                i += len(old_op)
+
+        return list(dict.fromkeys(mutants))
 
     def decompose_and_recombine(
         self,
@@ -882,21 +884,4 @@ if __name__ == "__main__":
     else:
         print("  No results in DB yet — run some simulations first!")
     print()
-    h.show_quality_targets()                    rest = original[i + len(old_op):]
-
-                    # Unified depth scan: start at depth 1 (inside the call)
-                    # and collect chars until we exit back to depth 0.
-                    # Works for: rank(close), rank(ts_zscore(v)), foo(bar(x),baz(y))
-                    depth = 1
-                    arg_end = len(rest)
-                    for k, ch in enumerate(rest):
-                        if ch == 40:  # ord("(")
-                            depth += 1
-                        elif ch == 41:  # ord(")")
-                            depth -= 1
-                            if depth == 0:
-                                arg_end = k
-                                break
-                    args = rest[:arg_end]
-
-                    
+    h.show_quality_targets()

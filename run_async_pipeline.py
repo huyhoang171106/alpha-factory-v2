@@ -52,6 +52,11 @@ from alpha_ast import parameter_agnostic_signature
 from submit_governor import SubmitGovernor
 from quality_diversity import QualityDiversityArchive
 from budget_allocator import BudgetAllocator, RegimeAwareArmSelector
+from validator import (
+    normalize_expression_aliases,
+    supports_local_backtest_expression,
+    validate_expression,
+)
 
 # Standalone execution should behave like the CLI's local profile unless the
 # caller already provided explicit environment overrides.
@@ -370,13 +375,14 @@ class AsyncAlphaFactory:
         return self._clamp01(reward)
 
     def _passes_local_backtest(self, cand: AlphaCandidate) -> Tuple[bool, str]:
-        if self._local_bt_disabled:
+        if not self._ensure_local_backtester():
             return True, "local_bt_disabled"
-        try:
-            if self._local_bt is None:
-                from local_backtest import LocalBacktester
 
-                self._local_bt = LocalBacktester()
+        supported, support_reason = supports_local_backtest_expression(cand.expression)
+        if not supported:
+            return False, f"local_bt_unsupported:{support_reason}"
+
+        try:
             res = self._local_bt.backtest_single(cand.expression)
         except Exception as exc:
             self._local_bt_disabled = True
@@ -393,6 +399,21 @@ class AsyncAlphaFactory:
             return False, "local_bt_low_sharpe"
         return True, "local_bt_pass"
 
+    def _ensure_local_backtester(self) -> bool:
+        if self._local_bt_disabled:
+            return False
+        if self._local_bt is not None:
+            return True
+        try:
+            from local_backtest import LocalBacktester
+
+            self._local_bt = LocalBacktester()
+            return True
+        except Exception as exc:
+            self._local_bt_disabled = True
+            logger.warning("Local backtest disabled on setup: %s", exc)
+            return False
+
     def _assign_delay_lane(self, cand: AlphaCandidate) -> None:
         if not ENABLE_D0:
             cand.delay = 1
@@ -405,6 +426,17 @@ class AsyncAlphaFactory:
         """
         Fast gate for ranker worker. Returns (is_accepted, reason, score).
         """
+        cand.expression = normalize_expression_aliases(cand.expression)
+        is_valid, validation_reason = validate_expression(cand.expression)
+        if not is_valid:
+            return False, f"invalid_expr:{validation_reason}", 0.0
+        if self._ensure_local_backtester():
+            supported, support_reason = supports_local_backtest_expression(
+                cand.expression
+            )
+            if not supported:
+                return False, f"local_bt_unsupported:{support_reason}", 0.0
+
         signature = parameter_agnostic_signature(cand.expression)
         if (
             signature in self.pending_signatures

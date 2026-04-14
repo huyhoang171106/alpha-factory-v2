@@ -1,11 +1,17 @@
 import os
+import random
 import tempfile
 import unittest
 from pathlib import Path
 
 from generator import AlphaGenerator
 from pipeline import AlphaFactory
-from alpha_factory_cli import _acquire_singleton_lock, _release_singleton_lock
+from alpha_factory_cli import (
+    _acquire_singleton_lock,
+    _profile_env,
+    _release_singleton_lock,
+)
+from validator import supports_local_backtest_expression
 
 
 class GeneratorHypothesisModeTests(unittest.TestCase):
@@ -40,6 +46,34 @@ class GeneratorHypothesisModeTests(unittest.TestCase):
                 os.environ.pop("GENERATOR_MODE", None)
             else:
                 os.environ["GENERATOR_MODE"] = old_mode
+
+    def test_generator_filters_local_bt_unsupported_when_enabled(self):
+        old_flag = os.getenv("GEN_REQUIRE_LOCAL_BT_SUPPORT")
+        random_state = random.getstate()
+        random.seed(0)
+        os.environ["GEN_REQUIRE_LOCAL_BT_SUPPORT"] = "1"
+        try:
+            gen = AlphaGenerator(generation_mode="legacy")
+            batch = gen.generate_from_themes(80)
+            self.assertGreater(len(batch), 0)
+            for cand in batch:
+                ok, reason = supports_local_backtest_expression(cand.expression)
+                self.assertTrue(ok, f"{reason}: {cand.expression}")
+        finally:
+            random.setstate(random_state)
+            if old_flag is None:
+                os.environ.pop("GEN_REQUIRE_LOCAL_BT_SUPPORT", None)
+            else:
+                os.environ["GEN_REQUIRE_LOCAL_BT_SUPPORT"] = old_flag
+
+    def test_vps_profile_enables_local_bt_generator_filter(self):
+        old_flag = os.getenv("GEN_REQUIRE_LOCAL_BT_SUPPORT")
+        try:
+            os.environ.pop("GEN_REQUIRE_LOCAL_BT_SUPPORT", None)
+            self.assertEqual(_profile_env("vps")["GEN_REQUIRE_LOCAL_BT_SUPPORT"], "1")
+        finally:
+            if old_flag is not None:
+                os.environ["GEN_REQUIRE_LOCAL_BT_SUPPORT"] = old_flag
 
     def test_singleton_lock_prevents_duplicate_local_runner(self):
         with tempfile.TemporaryDirectory() as tmp:

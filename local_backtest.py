@@ -36,13 +36,13 @@ logger = logging.getLogger(__name__)
 # Config
 # ============================================================
 DATA_CACHE_DIR = os.path.join(os.path.dirname(__file__), ".bt_cache")
-CACHE_TTL_DAYS = 7         # refresh market data every 7 days
-BT_LOOKBACK_YEARS = 2      # 2 years of backtest
-N_STOCKS = 100             # top 100 S&P500 by market cap (fast + representative)
-MIN_SHARPE_LOCAL = 0.4     # local Sharpe pre-filter threshold (lenient than WQ)
+CACHE_TTL_DAYS = 7  # refresh market data every 7 days
+BT_LOOKBACK_YEARS = 2  # 2 years of backtest
+N_STOCKS = 100  # top 100 S&P500 by market cap (fast + representative)
+MIN_SHARPE_LOCAL = 0.4  # local Sharpe pre-filter threshold (lenient than WQ)
 MAX_TURNOVER_LOCAL = 0.85  # turnover limit (WQ penalizes >80%)
-MIN_FITNESS_LOCAL  = 0.8   # fitness proxy threshold
-MAX_EVAL_TIMEOUT   = 5.0   # seconds per expression evaluation
+MIN_FITNESS_LOCAL = 0.8  # fitness proxy threshold
+MAX_EVAL_TIMEOUT = 5.0  # seconds per expression evaluation
 
 
 @dataclass
@@ -52,15 +52,17 @@ class LocalBTResult:
     turnover: float = 0.0
     drawdown: float = 0.0
     fitness: float = 0.0
-    score: float = 0.0     # composite 0-100
+    score: float = 0.0  # composite 0-100
     passed: bool = False
     error: str = ""
 
     @property
     def summary(self) -> str:
         status = "✅ PASS" if self.passed else "❌ FAIL"
-        return (f"{status} | Sharpe={self.sharpe:.2f} Turnover={self.turnover:.1%} "
-                f"Drawdown={self.drawdown:.1%} Score={self.score:.0f}")
+        return (
+            f"{status} | Sharpe={self.sharpe:.2f} Turnover={self.turnover:.1%} "
+            f"Drawdown={self.drawdown:.1%} Score={self.score:.0f}"
+        )
 
 
 # ============================================================
@@ -78,18 +80,110 @@ class MarketData:
         """Get top N S&P 500 tickers (hardcoded liquid set for speed)"""
         # Top 100 most liquid S&P 500 stocks (stable universe)
         return [
-            "AAPL", "MSFT", "AMZN", "NVDA", "GOOGL", "META", "TSLA", "BRK-B",
-            "UNH", "LLY", "JPM", "V", "XOM", "MA", "JNJ", "PG", "HD", "AVGO",
-            "CVX", "MRK", "ABBV", "COST", "PEP", "BAC", "KO", "ADBE", "CRM",
-            "MCD", "TMO", "WMT", "CSCO", "ABT", "NFLX", "ORCL", "ACN", "DIS",
-            "TXN", "VZ", "INTC", "AMD", "PM", "AMGN", "QCOM", "HON", "IBM",
-            "CAT", "GS", "RTX", "UPS", "AXP", "SPGI", "BKNG", "LOW", "AMAT",
-            "MDT", "SBUX", "NEE", "MS", "DE", "GILD", "LMT", "CI", "C",
-            "BLK", "NOW", "ISRG", "SYK", "MDLZ", "MMC", "ZTS", "CVS", "MO",
-            "ADP", "TJX", "GE", "PLD", "EOG", "SO", "CME", "D", "HCA",
-            "NOC", "ITW", "BDX", "EW", "AON", "REGN", "PGR", "MCO", "WM",
-            "APD", "MMM", "PSA", "CCI", "KLAC", "LRCX", "NSC", "AEP", "TEL",
-            "EL", "CTSH", "PANW", "FIS", "DXCM",
+            "AAPL",
+            "MSFT",
+            "AMZN",
+            "NVDA",
+            "GOOGL",
+            "META",
+            "TSLA",
+            "BRK-B",
+            "UNH",
+            "LLY",
+            "JPM",
+            "V",
+            "XOM",
+            "MA",
+            "JNJ",
+            "PG",
+            "HD",
+            "AVGO",
+            "CVX",
+            "MRK",
+            "ABBV",
+            "COST",
+            "PEP",
+            "BAC",
+            "KO",
+            "ADBE",
+            "CRM",
+            "MCD",
+            "TMO",
+            "WMT",
+            "CSCO",
+            "ABT",
+            "NFLX",
+            "ORCL",
+            "ACN",
+            "DIS",
+            "TXN",
+            "VZ",
+            "INTC",
+            "AMD",
+            "PM",
+            "AMGN",
+            "QCOM",
+            "HON",
+            "IBM",
+            "CAT",
+            "GS",
+            "RTX",
+            "UPS",
+            "AXP",
+            "SPGI",
+            "BKNG",
+            "LOW",
+            "AMAT",
+            "MDT",
+            "SBUX",
+            "NEE",
+            "MS",
+            "DE",
+            "GILD",
+            "LMT",
+            "CI",
+            "C",
+            "BLK",
+            "NOW",
+            "ISRG",
+            "SYK",
+            "MDLZ",
+            "MMC",
+            "ZTS",
+            "CVS",
+            "MO",
+            "ADP",
+            "TJX",
+            "GE",
+            "PLD",
+            "EOG",
+            "SO",
+            "CME",
+            "D",
+            "HCA",
+            "NOC",
+            "ITW",
+            "BDX",
+            "EW",
+            "AON",
+            "REGN",
+            "PGR",
+            "MCO",
+            "WM",
+            "APD",
+            "MMM",
+            "PSA",
+            "CCI",
+            "KLAC",
+            "LRCX",
+            "NSC",
+            "AEP",
+            "TEL",
+            "EL",
+            "CTSH",
+            "PANW",
+            "FIS",
+            "DXCM",
         ]
 
     def _cache_path(self) -> str:
@@ -152,6 +246,8 @@ class MarketData:
             data["vwap"] = hl2
             data["returns"] = data["close"].pct_change()
             data["adv20"] = data["volume"].rolling(20).mean()
+            data["adv60"] = data["volume"].rolling(60).mean()
+            data["adv120"] = data["volume"].rolling(120).mean()
 
         # Save cache
         # Store as separate parquets per field
@@ -159,13 +255,26 @@ class MarketData:
             path = os.path.join(self.cache_dir, f"{fname}.parquet")
             df.to_parquet(path)
 
-        logger.info(f"  ✅ Downloaded {data['close'].shape[1]} stocks, {data['close'].shape[0]} days")
+        logger.info(
+            f"  ✅ Downloaded {data['close'].shape[1]} stocks, {data['close'].shape[0]} days"
+        )
         self._data = data
         return data
 
     def _load_from_cache(self) -> Dict[str, pd.DataFrame]:
         data = {}
-        for fname in ["open", "high", "low", "close", "volume", "vwap", "returns", "adv20"]:
+        for fname in [
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "vwap",
+            "returns",
+            "adv20",
+            "adv60",
+            "adv120",
+        ]:
             path = os.path.join(self.cache_dir, f"{fname}.parquet")
             if os.path.exists(path):
                 data[fname] = pd.read_parquet(path)
@@ -209,14 +318,27 @@ class FastExprEval:
         # ── Primitives ────────────────────────────────────────────
         primitives = {
             "close": self.data.get("close"),
-            "open":  self.data.get("open"),
-            "high":  self.data.get("high"),
-            "low":   self.data.get("low"),
+            "open": self.data.get("open"),
+            "high": self.data.get("high"),
+            "low": self.data.get("low"),
             "volume": self.data.get("volume"),
-            "vwap":  self.data.get("vwap"),
+            "vwap": self.data.get("vwap"),
             "returns": self.data.get("returns"),
             "adv20": self.data.get("adv20"),
-            "adv60": self.data.get("adv20"),  # proxy
+            "adv60": (
+                self.data.get("adv60")
+                if self.data.get("adv60") is not None
+                else self.data.get("adv20")
+            ),
+            "adv120": (
+                self.data.get("adv120")
+                if self.data.get("adv120") is not None
+                else (
+                    self.data.get("adv60")
+                    if self.data.get("adv60") is not None
+                    else self.data.get("adv20")
+                )
+            ),
         }
         if expr in primitives and primitives[expr] is not None:
             return primitives[expr].copy()
@@ -230,7 +352,7 @@ class FastExprEval:
             pass
 
         # ── Parse function call ────────────────────────────────────
-        m = re.match(r'^(-?)(\w+)\((.+)\)$', expr, re.DOTALL)
+        m = re.match(r"^(-?)(\w+)\((.+)\)$", expr, re.DOTALL)
         if not m:
             # Binary operation: try to split on top-level * / + -
             return self._eval_binary(expr)
@@ -240,7 +362,7 @@ class FastExprEval:
 
         result = self._apply_func(func, args)
 
-        if sign == '-' and result is not None:
+        if sign == "-" and result is not None:
             result = -result
         return result
 
@@ -248,8 +370,11 @@ class FastExprEval:
         """Apply a FASTEXPR function"""
         func = func.lower()
 
-        def arg(i): return self._eval(args[i].strip())
-        def n(i): return int(float(args[i].strip()))
+        def arg(i):
+            return self._eval(args[i].strip())
+
+        def n(i):
+            return int(float(args[i].strip()))
 
         try:
             # ── Cross-sectional ───
@@ -257,7 +382,9 @@ class FastExprEval:
                 return self._cs_rank(arg(0))
             if func == "zscore":
                 a = arg(0)
-                return (a - a.mean(axis=1).values.reshape(-1,1)) / (a.std(axis=1).values.reshape(-1,1) + 1e-8)
+                return (a - a.mean(axis=1).values.reshape(-1, 1)) / (
+                    a.std(axis=1).values.reshape(-1, 1) + 1e-8
+                )
             if func == "sigmoid":
                 a = arg(0)
                 return 1 / (1 + np.exp(-a.clip(-20, 20)))
@@ -281,40 +408,47 @@ class FastExprEval:
             if func in ("ts_delay", "ts_lag"):
                 return arg(0).shift(n(1))
             if func == "ts_mean":
-                return arg(0).rolling(n(1), min_periods=max(1, n(1)//2)).mean()
+                return arg(0).rolling(n(1), min_periods=max(1, n(1) // 2)).mean()
             if func == "ts_sum":
                 return arg(0).rolling(n(1), min_periods=1).sum()
             if func in ("ts_std_dev", "ts_std"):
-                return arg(0).rolling(n(1), min_periods=max(2, n(1)//2)).std()
+                return arg(0).rolling(n(1), min_periods=max(2, n(1) // 2)).std()
             if func == "ts_min":
                 return arg(0).rolling(n(1), min_periods=1).min()
             if func == "ts_max":
                 return arg(0).rolling(n(1), min_periods=1).max()
             if func in ("ts_rank", "ts_r"):
                 d = n(1)
-                return arg(0).rolling(d, min_periods=max(1,d//2)).apply(
-                    lambda x: pd.Series(x).rank(pct=True).iloc[-1], raw=True)
+                return (
+                    arg(0)
+                    .rolling(d, min_periods=max(1, d // 2))
+                    .apply(lambda x: pd.Series(x).rank(pct=True).iloc[-1], raw=True)
+                )
             if func == "ts_zscore":
                 a = arg(0)
                 d = n(1)
-                mu = a.rolling(d, min_periods=max(1,d//2)).mean()
-                sigma = a.rolling(d, min_periods=max(2,d//2)).std().clip(lower=1e-8)
+                mu = a.rolling(d, min_periods=max(1, d // 2)).mean()
+                sigma = a.rolling(d, min_periods=max(2, d // 2)).std().clip(lower=1e-8)
                 return (a - mu) / sigma
             if func in ("ts_corr", "ts_correlation"):
                 a, b, d = arg(0), arg(1), n(2)
-                return a.rolling(d, min_periods=max(3,d//2)).corr(b)
+                return a.rolling(d, min_periods=max(3, d // 2)).corr(b)
             if func in ("ts_covariance", "ts_cov"):
                 a, b, d = arg(0), arg(1), n(2)
-                return a.rolling(d, min_periods=max(3,d//2)).cov(b)
+                return a.rolling(d, min_periods=max(3, d // 2)).cov(b)
             if func == "ts_decay_linear":
                 a, d = arg(0), n(1)
-                weights = np.arange(1, d+1, dtype=float)
+                weights = np.arange(1, d + 1, dtype=float)
                 weights /= weights.sum()
-                return a.rolling(d, min_periods=max(1,d//2)).apply(
-                    lambda x: np.dot(x[-len(weights):], weights[-len(x):]) / weights[-len(x):].sum(),
-                    raw=True)
+                return a.rolling(d, min_periods=max(1, d // 2)).apply(
+                    lambda x: (
+                        np.dot(x[-len(weights) :], weights[-len(x) :])
+                        / weights[-len(x) :].sum()
+                    ),
+                    raw=True,
+                )
             if func == "ts_skewness":
-                return arg(0).rolling(n(1), min_periods=max(3,n(1)//2)).skew()
+                return arg(0).rolling(n(1), min_periods=max(3, n(1) // 2)).skew()
             if func in ("ts_arg_max",):
                 d = n(1)
                 return arg(0).rolling(d).apply(np.argmax, raw=True)
@@ -336,8 +470,10 @@ class FastExprEval:
                 a = arg(0)
                 daily_mean = a.mean(axis=1)
                 return pd.DataFrame(
-                    daily_mean.values.reshape(-1,1) * np.ones((1, a.shape[1])),
-                    index=a.index, columns=a.columns)
+                    daily_mean.values.reshape(-1, 1) * np.ones((1, a.shape[1])),
+                    index=a.index,
+                    columns=a.columns,
+                )
             if func in ("group_zscore",):
                 a = arg(0)
                 mu = a.mean(axis=1)
@@ -368,12 +504,14 @@ class FastExprEval:
         """Evaluate binary operations: A op B"""
         # Find top-level binary operators
         depth = 0
-        for i in range(len(expr)-1, -1, -1):
-            if expr[i] == ')': depth += 1
-            elif expr[i] == '(': depth -= 1
-            elif depth == 0 and expr[i] in ('+', '-', '*', '/'):
+        for i in range(len(expr) - 1, -1, -1):
+            if expr[i] == ")":
+                depth += 1
+            elif expr[i] == "(":
+                depth -= 1
+            elif depth == 0 and expr[i] in ("+", "-", "*", "/"):
                 left = expr[:i].strip()
-                right = expr[i+1:].strip()
+                right = expr[i + 1 :].strip()
                 op = expr[i]
                 if left and right:
                     try:
@@ -381,10 +519,14 @@ class FastExprEval:
                         R = self._eval(right)
                         if L is None or R is None:
                             return None
-                        if op == '+': return L + R
-                        if op == '-': return L - R
-                        if op == '*': return L * R
-                        if op == '/': return L / (R.replace(0, np.nan).clip(lower=1e-8))
+                        if op == "+":
+                            return L + R
+                        if op == "-":
+                            return L - R
+                        if op == "*":
+                            return L * R
+                        if op == "/":
+                            return L / (R.replace(0, np.nan).clip(lower=1e-8))
                     except Exception:
                         return None
         return None
@@ -395,13 +537,13 @@ class FastExprEval:
         depth = 0
         current = ""
         for ch in args_str:
-            if ch == '(':
+            if ch == "(":
                 depth += 1
                 current += ch
-            elif ch == ')':
+            elif ch == ")":
                 depth -= 1
                 current += ch
-            elif ch == ',' and depth == 0:
+            elif ch == "," and depth == 0:
                 args.append(current)
                 current = ""
             else:
@@ -494,32 +636,49 @@ class LocalBacktester:
             logger.debug(f"Simulation error: {e}")
             return {}
 
-    def _score(self, sharpe: float, turnover: float, drawdown: float, fitness: float) -> float:
+    def _score(
+        self, sharpe: float, turnover: float, drawdown: float, fitness: float
+    ) -> float:
         """Composite score 0-100 for pre-filtering"""
         score = 50.0
 
         # Sharpe contribution (most important)
-        if sharpe > 1.5:   score += 30
-        elif sharpe > 1.0: score += 20
-        elif sharpe > 0.6: score += 10
-        elif sharpe > 0.3: score += 0
-        else:              score -= 20
+        if sharpe > 1.5:
+            score += 30
+        elif sharpe > 1.0:
+            score += 20
+        elif sharpe > 0.6:
+            score += 10
+        elif sharpe > 0.3:
+            score += 0
+        else:
+            score -= 20
 
         # Turnover (WQ Brain penalizes very high turnover)
-        if turnover < 0.10:   score += 10
-        elif turnover < 0.30: score += 5
-        elif turnover < 0.60: score += 0
-        elif turnover < 0.85: score -= 10
-        else:                 score -= 25
+        if turnover < 0.10:
+            score += 10
+        elif turnover < 0.30:
+            score += 5
+        elif turnover < 0.60:
+            score += 0
+        elif turnover < 0.85:
+            score -= 10
+        else:
+            score -= 25
 
         # Drawdown
-        if drawdown > -0.10:   score += 5
-        elif drawdown > -0.20: score += 0
-        else:                  score -= 10
+        if drawdown > -0.10:
+            score += 5
+        elif drawdown > -0.20:
+            score += 0
+        else:
+            score -= 10
 
         # Fitness (risk-adjusted return)
-        if fitness > 2.0:  score += 10
-        elif fitness > 1.0: score += 5
+        if fitness > 2.0:
+            score += 10
+        elif fitness > 1.0:
+            score += 5
 
         return max(0.0, min(100.0, score))
 
@@ -539,15 +698,16 @@ class LocalBacktester:
                 result.error = "Simulation failed"
                 return result
 
-            result.sharpe   = metrics.get("sharpe", 0)
+            result.sharpe = metrics.get("sharpe", 0)
             result.turnover = metrics.get("turnover", 0)
             result.drawdown = metrics.get("drawdown", 0)
-            result.fitness  = metrics.get("fitness", 0)
-            result.score    = self._score(result.sharpe, result.turnover,
-                                           result.drawdown, result.fitness)
-            result.passed   = (
-                result.sharpe   >= MIN_SHARPE_LOCAL and
-                result.turnover <= MAX_TURNOVER_LOCAL
+            result.fitness = metrics.get("fitness", 0)
+            result.score = self._score(
+                result.sharpe, result.turnover, result.drawdown, result.fitness
+            )
+            result.passed = (
+                result.sharpe >= MIN_SHARPE_LOCAL
+                and result.turnover <= MAX_TURNOVER_LOCAL
             )
         except Exception as e:
             result.error = str(e)
@@ -590,8 +750,10 @@ class LocalBacktester:
                 failed += 1
 
             if i % 10 == 0:
-                logger.info(f"  Progress: {i}/{len(expressions)} "
-                            f"| pass={passed} fail={failed} err={errors}")
+                logger.info(
+                    f"  Progress: {i}/{len(expressions)} "
+                    f"| pass={passed} fail={failed} err={errors}"
+                )
 
         # Sort by score descending
         results.sort(key=lambda r: r.score, reverse=True)
@@ -614,9 +776,9 @@ class LocalBacktester:
     def show_stats(self, expressions: List[str], limit: int = 10):
         """Show detailed backtest stats for a list of expressions"""
         self._init()
-        print(f"\n{'='*70}")
+        print(f"\n{'=' * 70}")
         print(f"{'#':3} {'Score':6} {'Sharpe':7} {'Turn':8} {'Draw':8}  Expression")
-        print(f"{'='*70}")
+        print(f"{'=' * 70}")
 
         results = []
         for expr in expressions:
@@ -626,17 +788,21 @@ class LocalBacktester:
         results.sort(key=lambda r: r.score, reverse=True)
         for i, r in enumerate(results[:limit], 1):
             status = "✅" if r.passed else "❌"
-            print(f"{i:3}. {status} [{r.score:5.1f}] "
-                  f"S={r.sharpe:+.2f} T={r.turnover:.0%} D={r.drawdown:.0%} "
-                  f" {r.expression[:55]}")
-        print(f"{'='*70}\n")
+            print(
+                f"{i:3}. {status} [{r.score:5.1f}] "
+                f"S={r.sharpe:+.2f} T={r.turnover:.0%} D={r.drawdown:.0%} "
+                f" {r.expression[:55]}"
+            )
+        print(f"{'=' * 70}\n")
 
 
 # ============================================================
 # Quick test
 # ============================================================
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s %(message)s', datefmt='%H:%M:%S')
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S"
+    )
 
     bt = LocalBacktester()
 

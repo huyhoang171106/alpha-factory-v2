@@ -22,7 +22,6 @@ from pathlib import Path
 
 from tracker import AlphaTracker
 from submit_governor import SubmitGovernor
-from wq_client import WQClient
 
 ROOT = Path(__file__).resolve().parent
 VENV_DIR = ROOT / ".venv"
@@ -53,6 +52,7 @@ PROFILE_DEFAULTS = {
         "ASYNC_D1_SHARE": "0.90",
         "ASYNC_HYPO_TEMPLATE_RATIO": "0.35",
         "ASYNC_HYPO_ADV_WRAP_PROB": "0.00",
+        "GEN_REQUIRE_LOCAL_BT_SUPPORT": "1",
         "ASYNC_SIM_BATCH_TIMEOUT": "600",
         "WQ_MAX_CONCURRENT": "1",
         "WQ_MAX_WAIT_TIME": "600",
@@ -67,6 +67,9 @@ PROFILE_DEFAULTS = {
         "ASYNC_MIN_CRITIC_SCORE": "0.30",
         "ASYNC_COMPLEXITY_MIN": "0.40",
         "ASYNC_HYPO_ADV_WRAP_PROB": "0.00",
+        "ASYNC_HYPO_TEMPLATE_RATIO": "0.00",
+        "GEN_REQUIRE_LOCAL_BT_SUPPORT": "1",
+        "GENERATOR_MODE": "hypothesis_driven",
     },
     "gha": {
         "ASYNC_RANKER_WORKERS": "1",
@@ -400,6 +403,8 @@ def run_local_hybrid(profile: str = "local") -> int:
 
 
 def run_sync_submit(limit: int) -> int:
+    from wq_client import WQClient
+
     tracker = AlphaTracker()
     client = WQClient()
     governor = SubmitGovernor(tracker, client)
