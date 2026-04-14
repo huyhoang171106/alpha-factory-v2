@@ -153,7 +153,7 @@ def safe_expr_ref(expression: str) -> str:
 
 
 def _quick_similarity_score(
-    expr: str, recent: list[str], threshold: float = 0.75
+    expr: str, recent: list[str], threshold: float = 0.85
 ) -> float:
     """
     Fast Jaccard token overlap check against a list of recent expressions.
@@ -445,7 +445,7 @@ class AsyncAlphaFactory:
             return False, "duplicate_signature", 0.0
         if self.tracker.is_duplicate(cand.expression):
             return False, "duplicate_db", 0.0
-        if self.tracker.is_collinear(cand.expression):
+        if self.tracker.is_collinear(cand.expression, threshold=0.95):
             return False, "collinear", 0.0
 
         # ---- Self-corr risk pre-filter ----
