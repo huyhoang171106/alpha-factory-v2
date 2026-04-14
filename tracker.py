@@ -1071,21 +1071,10 @@ class AlphaTracker:
 
     def is_collinear(self, expression: str, threshold: float = 0.85) -> bool:
         """
-        Check structural collinearity against recent history using optimized SQL.
+        Check structural collinearity against recent expressions via token/operator Jaccard.
+        Does NOT query alpha_signatures table - use is_duplicate() for exact-match dedup.
         """
         with self._conn_lock:
-            new_canonical = canonicalize_expression(expression)
-            new_sig = parameter_agnostic_signature(expression)
-
-            # 1. Quick check for exact canonical or structural signature match
-            cursor = self.conn.execute(
-                "SELECT 1 FROM alpha_signatures WHERE canonical_expr = ? OR param_signature = ? LIMIT 1",
-                (new_canonical, new_sig),
-            )
-            if cursor.fetchone():
-                return True
-
-            # 2. In-memory structure cache for faster rank-time checks.
             new_tokens = token_set(expression, strip_numbers=True)
             new_ops = operator_set(expression)
             if not new_tokens:

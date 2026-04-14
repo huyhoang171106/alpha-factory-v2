@@ -64,6 +64,9 @@ PROFILE_DEFAULTS = {
         "ASYNC_RANKER_WORKERS": "3",
         "ASYNC_SIMULATOR_WORKERS": "1",
         "ASYNC_USE_RAG": "0",
+        "ASYNC_MIN_CRITIC_SCORE": "0.30",
+        "ASYNC_COMPLEXITY_MIN": "0.40",
+        "ASYNC_HYPO_ADV_WRAP_PROB": "0.00",
     },
     "gha": {
         "ASYNC_RANKER_WORKERS": "1",
