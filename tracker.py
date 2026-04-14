@@ -10,7 +10,7 @@ import time
 import re
 import threading
 from datetime import datetime
-from typing import List, Optional
+from typing import Dict, List, Optional
 from alpha_ast import (
     canonicalize_expression,
     parameter_agnostic_signature,
@@ -46,11 +46,11 @@ class AlphaTracker:
         self._conn_lock = threading.RLock()
         self.conn = sqlite3.connect(db_path, timeout=30.0, check_same_thread=False)
         self._recent_structure_cache: list[tuple[set[str], set[str]]] = []
-        
+
         # Performance PRAGMAs: Prevent lock crashes in concurrency
         self.conn.execute("PRAGMA journal_mode=WAL;")
         self.conn.execute("PRAGMA synchronous=NORMAL;")
-        
+
         self._init_db()
 
     def _init_db(self):
@@ -198,10 +198,12 @@ class AlphaTracker:
         cache: list[tuple[set[str], set[str]]] = []
         for (expr,) in rows:
             expression = expr or ""
-            cache.append((
-                token_set(expression, strip_numbers=True),
-                operator_set(expression),
-            ))
+            cache.append(
+                (
+                    token_set(expression, strip_numbers=True),
+                    operator_set(expression),
+                )
+            )
         self._recent_structure_cache = cache
 
     def _backfill_signatures(self, limit: int = 10000):
@@ -276,19 +278,29 @@ class AlphaTracker:
                 self.conn.execute(f"ALTER TABLE submit_jobs ADD COLUMN {col} {typedef}")
         self.conn.commit()
 
-    def save_result(self, result, candidate=None, run_id: str = "", batch_id: str = "") -> int:
+    def save_result(
+        self, result, candidate=None, run_id: str = "", batch_id: str = ""
+    ) -> int:
         """Save a SimResult to DB with optional lineage from AlphaCandidate."""
         with self._conn_lock:
             theme = getattr(candidate, "theme", "unknown") if candidate else "unknown"
             family = getattr(candidate, "family", "") if candidate else ""
-            mutation_type = getattr(candidate, "mutation_type", "seed") if candidate else "seed"
+            mutation_type = (
+                getattr(candidate, "mutation_type", "seed") if candidate else "seed"
+            )
             hypothesis = getattr(candidate, "hypothesis", "") if candidate else ""
-            nearest_sibling = getattr(candidate, "nearest_sibling", "") if candidate else ""
+            nearest_sibling = (
+                getattr(candidate, "nearest_sibling", "") if candidate else ""
+            )
             canonical_expr = canonicalize_expression(result.expression)
-            quality_tier = classify_quality_tier(float(result.sharpe or 0), float(result.fitness or 0))
+            quality_tier = classify_quality_tier(
+                float(result.sharpe or 0), float(result.fitness or 0)
+            )
             strategy_cluster = infer_strategy_cluster(theme, mutation_type)
-            risk_flags = build_risk_flags(result.expression, float(result.turnover or 0), result.error)
-            
+            risk_flags = build_risk_flags(
+                result.expression, float(result.turnover or 0), result.error
+            )
+
             # Deduce fail reason natively from Result (or candidate's metadata)
             fail_reason = ""
             if result.error:
@@ -300,7 +312,8 @@ class AlphaTracker:
             if result.error:
                 initial_state = "rejected"
 
-            cursor = self.conn.execute("""
+            cursor = self.conn.execute(
+                """
                 INSERT INTO alphas (
                     expression, sharpe, fitness, turnover, returns, drawdown,
                     passed_checks, total_checks, all_passed,
@@ -310,18 +323,43 @@ class AlphaTracker:
                     quality_tier, strategy_cluster, risk_flags, submit_state, run_id, batch_id, self_corr,
                     created_at
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                result.expression, result.sharpe, result.fitness,
-                result.turnover, result.returns, result.drawdown,
-                result.passed_checks, result.total_checks, result.all_passed,
-                result.alpha_id, result.alpha_url, result.error, result.sub_sharpe,
-                result.region, result.universe, result.delay, result.decay,
-                result.neutralization,
-                theme, family, mutation_type, hypothesis, fail_reason, nearest_sibling, canonical_expr,
-                quality_tier, strategy_cluster, risk_flags, initial_state, run_id, batch_id,
-                getattr(result, 'self_corr', None),
-                None,  # created_at defaults to CURRENT_TIMESTAMP
-            ))
+            """,
+                (
+                    result.expression,
+                    result.sharpe,
+                    result.fitness,
+                    result.turnover,
+                    result.returns,
+                    result.drawdown,
+                    result.passed_checks,
+                    result.total_checks,
+                    result.all_passed,
+                    result.alpha_id,
+                    result.alpha_url,
+                    result.error,
+                    result.sub_sharpe,
+                    result.region,
+                    result.universe,
+                    result.delay,
+                    result.decay,
+                    result.neutralization,
+                    theme,
+                    family,
+                    mutation_type,
+                    hypothesis,
+                    fail_reason,
+                    nearest_sibling,
+                    canonical_expr,
+                    quality_tier,
+                    strategy_cluster,
+                    risk_flags,
+                    initial_state,
+                    run_id,
+                    batch_id,
+                    getattr(result, "self_corr", None),
+                    None,  # created_at defaults to CURRENT_TIMESTAMP
+                ),
+            )
             self.conn.commit()
             param_sig = parameter_agnostic_signature(result.expression)
             self.conn.execute(
@@ -332,15 +370,23 @@ class AlphaTracker:
                 (canonical_expr, param_sig, (result.expression or "")[:300]),
             )
             self.conn.commit()
-            self._recent_structure_cache.append((
-                token_set(result.expression, strip_numbers=True),
-                operator_set(result.expression),
-            ))
+            self._recent_structure_cache.append(
+                (
+                    token_set(result.expression, strip_numbers=True),
+                    operator_set(result.expression),
+                )
+            )
             if len(self._recent_structure_cache) > 2000:
                 self._recent_structure_cache = self._recent_structure_cache[-1500:]
             return cursor.lastrowid
 
-    def save_batch(self, results: list, candidates_map: dict = None, run_id: str = "", batch_id: str = "") -> int:
+    def save_batch(
+        self,
+        results: list,
+        candidates_map: dict = None,
+        run_id: str = "",
+        batch_id: str = "",
+    ) -> int:
         """Save multiple results. candidates_map: {expression: AlphaCandidate}."""
         count = 0
         for r in results:
@@ -374,9 +420,11 @@ class AlphaTracker:
             (alpha_id,),
         )
         row = cursor.fetchone()
-        return (row[0] if row and row[0] else "new")
+        return row[0] if row and row[0] else "new"
 
-    def transition_submit_state(self, alpha_id: str, next_state: str, reason: str = "") -> bool:
+    def transition_submit_state(
+        self, alpha_id: str, next_state: str, reason: str = ""
+    ) -> bool:
         current = self._get_submit_state(alpha_id)
         if current == next_state:
             return True
@@ -385,7 +433,11 @@ class AlphaTracker:
             return False
 
         submitted_flag = 1 if next_state in {"submitted", "accepted"} else 0
-        submitted_at = "CURRENT_TIMESTAMP" if next_state in {"submitted", "accepted"} else "submitted_at"
+        submitted_at = (
+            "CURRENT_TIMESTAMP"
+            if next_state in {"submitted", "accepted"}
+            else "submitted_at"
+        )
         accepted_at = "CURRENT_TIMESTAMP" if next_state == "accepted" else "accepted_at"
         self.conn.execute(
             f"""
@@ -432,7 +484,13 @@ class AlphaTracker:
         )
         self.conn.commit()
 
-    def mark_submit_failed(self, alpha_id: str, reason: str, error_class: str = "", next_retry_seconds: int = 60):
+    def mark_submit_failed(
+        self,
+        alpha_id: str,
+        reason: str,
+        error_class: str = "",
+        next_retry_seconds: int = 60,
+    ):
         self.transition_submit_state(alpha_id, "failed", reason=reason)
         self.conn.execute(
             """
@@ -500,7 +558,13 @@ class AlphaTracker:
                 COALESCE((SELECT submit_attempts FROM alphas WHERE alpha_id = ? ORDER BY id DESC LIMIT 1), 0)
             )
             """,
-            (alpha_id, alpha_id, (error_class or "")[:100], (reason or "")[:500], alpha_id),
+            (
+                alpha_id,
+                alpha_id,
+                (error_class or "")[:100],
+                (reason or "")[:500],
+                alpha_id,
+            ),
         )
         self.conn.commit()
 
@@ -527,7 +591,9 @@ class AlphaTracker:
         )
         return cursor.fetchall()
 
-    def mark_review_pending(self, alpha_id: str, reason: str = "", backoff_seconds: int = 60):
+    def mark_review_pending(
+        self, alpha_id: str, reason: str = "", backoff_seconds: int = 60
+    ):
         delay = max(5, int(backoff_seconds))
         self.conn.execute(
             """
@@ -543,7 +609,13 @@ class AlphaTracker:
         )
         self.conn.commit()
 
-    def finalize_submit_review(self, alpha_id: str, decision: str, reason: str = "", self_corr: float | None = None) -> bool:
+    def finalize_submit_review(
+        self,
+        alpha_id: str,
+        decision: str,
+        reason: str = "",
+        self_corr: float | None = None,
+    ) -> bool:
         """
         Apply post-submit decision from WQ review:
         - accepted
@@ -700,10 +772,16 @@ class AlphaTracker:
         total_submitted_lifecycle = submitted_pending + submit_ok_total
         gate_pass_rate = (gated / generated) if generated else 0.0
         submit_success_rate = (submitted_pending / queued) if queued else 0.0
-        submit_ok_rate = (submit_ok_total / total_submitted_lifecycle) if total_submitted_lifecycle else 0.0
+        submit_ok_rate = (
+            (submit_ok_total / total_submitted_lifecycle)
+            if total_submitted_lifecycle
+            else 0.0
+        )
         dlq_rate = (dead_lettered / queued) if queued else 0.0
         true_accept_rate = (accepted / submit_ok_total) if submit_ok_total else 0.0
-        true_reject_rate = (rejected_after_submit / submit_ok_total) if submit_ok_total else 0.0
+        true_reject_rate = (
+            (rejected_after_submit / submit_ok_total) if submit_ok_total else 0.0
+        )
         return {
             "generated": generated,
             "simulated": simulated,
@@ -809,7 +887,13 @@ class AlphaTracker:
         )
         return cursor.fetchall()
 
-    def upsert_qd_archive(self, descriptor: str, expression: str, quality_score: float, novelty_score: float):
+    def upsert_qd_archive(
+        self,
+        descriptor: str,
+        expression: str,
+        quality_score: float,
+        novelty_score: float,
+    ):
         self.conn.execute(
             """
             INSERT INTO qd_archive(descriptor, expression, quality_score, novelty_score, updates, updated_at)
@@ -851,12 +935,15 @@ class AlphaTracker:
 
     def get_top_alphas(self, n: int = 10) -> list:
         """Get top alphas by Sharpe ratio"""
-        cursor = self.conn.execute("""
+        cursor = self.conn.execute(
+            """
             SELECT expression, sharpe, fitness, turnover, alpha_url, all_passed
             FROM alphas
             WHERE error = '' AND sharpe > 0
             ORDER BY sharpe DESC LIMIT ?
-        """, (n,))
+        """,
+            (n,),
+        )
         return cursor.fetchall()
 
     def get_submittable(self) -> list:
@@ -874,7 +961,8 @@ class AlphaTracker:
         if date is None:
             date = datetime.now().strftime("%Y-%m-%d")
 
-        cursor = self.conn.execute("""
+        cursor = self.conn.execute(
+            """
             SELECT
                 COUNT(*) as total,
                 SUM(CASE WHEN error = '' THEN 1 ELSE 0 END) as simulated,
@@ -884,7 +972,9 @@ class AlphaTracker:
                 MAX(sharpe) as max_sharpe
             FROM alphas
             WHERE created_at LIKE ?
-        """, (f"{date}%",))
+        """,
+            (f"{date}%",),
+        )
 
         row = cursor.fetchone()
         return {
@@ -903,25 +993,42 @@ class AlphaTracker:
             date = datetime.now().strftime("%Y-%m-%d")
 
         csv_path = os.path.join(RESULTS_DIR, f"alphas_{date}.csv")
-        cursor = self.conn.execute("""
+        cursor = self.conn.execute(
+            """
             SELECT expression, sharpe, fitness, turnover, all_passed,
                    alpha_url, error, region, quality_tier, strategy_cluster,
                    risk_flags, submit_state, submit_attempts, run_id, batch_id, created_at
             FROM alphas
             WHERE created_at LIKE ?
             ORDER BY sharpe DESC
-        """, (f"{date}%",))
+        """,
+            (f"{date}%",),
+        )
 
         rows = cursor.fetchall()
         if rows:
-            with open(csv_path, 'w', newline='', encoding='utf-8') as f:
+            with open(csv_path, "w", newline="", encoding="utf-8") as f:
                 writer = csv.writer(f)
-                writer.writerow([
-                    'expression', 'sharpe', 'fitness', 'turnover',
-                    'all_passed', 'alpha_url', 'error', 'region',
-                    'quality_tier', 'strategy_cluster', 'risk_flags',
-                    'submit_state', 'submit_attempts', 'run_id', 'batch_id', 'created_at'
-                ])
+                writer.writerow(
+                    [
+                        "expression",
+                        "sharpe",
+                        "fitness",
+                        "turnover",
+                        "all_passed",
+                        "alpha_url",
+                        "error",
+                        "region",
+                        "quality_tier",
+                        "strategy_cluster",
+                        "risk_flags",
+                        "submit_state",
+                        "submit_attempts",
+                        "run_id",
+                        "batch_id",
+                        "created_at",
+                    ]
+                )
                 writer.writerows(rows)
 
         return csv_path
@@ -939,7 +1046,7 @@ class AlphaTracker:
 
             cursor = self.conn.execute(
                 "SELECT COUNT(*) FROM alphas WHERE expression = ? OR canonical_expr = ?",
-                (expression.strip(), canonical)
+                (expression.strip(), canonical),
             )
             if cursor.fetchone()[0] > 0:
                 return True
@@ -969,7 +1076,7 @@ class AlphaTracker:
         with self._conn_lock:
             new_canonical = canonicalize_expression(expression)
             new_sig = parameter_agnostic_signature(expression)
-            
+
             # 1. Quick check for exact canonical or structural signature match
             cursor = self.conn.execute(
                 "SELECT 1 FROM alpha_signatures WHERE canonical_expr = ? OR param_signature = ? LIMIT 1",
@@ -1042,8 +1149,7 @@ class AlphaTracker:
     def get_family_pass_count(self, family: str) -> int:
         """Return number of passed alphas in a family."""
         cursor = self.conn.execute(
-            "SELECT COUNT(*) FROM alphas WHERE family = ? AND all_passed = 1",
-            (family,)
+            "SELECT COUNT(*) FROM alphas WHERE family = ? AND all_passed = 1", (family,)
         )
         return cursor.fetchone()[0]
 
@@ -1071,7 +1177,8 @@ class AlphaTracker:
         Return recent region performance:
         (region, total, passed, pass_rate, avg_sharpe)
         """
-        cursor = self.conn.execute("""
+        cursor = self.conn.execute(
+            """
             SELECT region,
                    COUNT(*) as total,
                    SUM(CASE WHEN all_passed = 1 THEN 1 ELSE 0 END) as passed,
@@ -1080,7 +1187,9 @@ class AlphaTracker:
             WHERE error = ''
               AND created_at >= datetime('now', ?)
             GROUP BY region
-        """, (f"-{lookback_days} day",))
+        """,
+            (f"-{lookback_days} day",),
+        )
         rows = []
         for region, total, passed, avg_sharpe in cursor.fetchall():
             total = total or 0
