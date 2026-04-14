@@ -68,6 +68,7 @@ PROFILE_DEFAULTS = {
         "ASYNC_COMPLEXITY_MIN": "0.40",
         "ASYNC_HYPO_ADV_WRAP_PROB": "0.00",
         "ASYNC_HYPO_TEMPLATE_RATIO": "0.00",
+        "ASYNC_LOCAL_BT": "0",
         "GEN_REQUIRE_LOCAL_BT_SUPPORT": "1",
         "GENERATOR_MODE": "hypothesis_driven",
     },
