@@ -1,7 +1,7 @@
 {
   "tool_name": "Bash",
-  "tool_input_preview": "{\"command\":\"powershell -Command \\\"& 'D:\\\\alpha-factory-private\\\\.venv\\\\Scripts\\\\python.exe' 'D:\\\\alpha-factory-private\\\\test_debug.py'\\\"\",\"description\":\"Final gate verification with CLI profile env va...",
-  "error": "Exit code 1\nTraceback (most recent call last):\r\n  File \"D:\\alpha-factory-private\\test_debug.py\", line 40, in <module>\r\n    robust = robust_quality_score(r)\r\n  File \"D:\\alpha-factory-private\\alpha_policy.py\", line 147, in robust_quality_score\r\n    checks_ok = float(passed_checks) / max(1, total_checks) if total_checks > 0 else 0.0\r\n                                                               ^^^^^^^^^^^^\r\nNameError: name 'total_checks' is not defined",
-  "timestamp": "2026-04-10T16:23:38.634Z",
+  "tool_input_preview": "{\"command\":\"cd /d D:\\\\alpha-factory-private && python -m unittest discover -s tests -v 2>&1 | tail -40\",\"timeout\":60000}",
+  "error": "Exit code 1\n/usr/bin/bash: line 1: cd: too many arguments",
+  "timestamp": "2026-04-13T16:08:19.226Z",
   "retry_count": 1
 }

@@ -18,3 +18,5 @@ generator_weights.json
 graphify-out/
 .claude/
 .gemini/
+# CocoIndex Code (ccc)
+/.cocoindex_code/

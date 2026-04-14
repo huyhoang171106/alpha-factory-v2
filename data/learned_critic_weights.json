@@ -1,0 +1,33 @@
+{
+  "version": 0,
+  "lookback": 5000,
+  "weights": {
+    "has_vwap": 0.014925373134328358,
+    "has_volume": 0.005050505050505051,
+    "has_hump": 0.3333333333333333,
+    "has_adv": 0.009615384615384616,
+    "has_ts_decay_linear": 0.004901960784313725,
+    "has_ts_quantile": 0.3333333333333333,
+    "has_regression_neut": 0.07142857142857142,
+    "has_group_mean": 0.037037037037037035,
+    "has_pasteurize": 0.07692307692307693,
+    "has_signed_power": 0.16666666666666666,
+    "has_group_neutralize": 0.0035587188612099642,
+    "has_if_else": 0.5,
+    "has_expression_length": 0.0054114018236424135,
+    "has_rank_outer": 0.3333333333333333,
+    "has_scale": 0.09090909090909091,
+    "has_zscore": 0.015151515151515152,
+    "has_group_zscore": 0.3333333333333333,
+    "has_returns": 0.005681818181818182,
+    "has_densify_bucket": 0.058823529411764705,
+    "has_group_rank": 0.3333333333333333,
+    "has_trade_when": 0.5,
+    "has_ts_corr": 0.009708737864077669,
+    "has_multi_field": 0.0044444444444444444,
+    "has_normalize": 0.5,
+    "has_winsorize": 0.16666666666666666,
+    "has_cross_sectional": 0.0035335689045936395,
+    "has_vector_neutralize": 0.5
+  }
+}

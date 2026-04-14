@@ -17,6 +17,8 @@ from alpha_policy import (
     passes_ic_stability,
     pre_submission_gate,
     pre_submission_gate_from_result,
+    sub_sharpe_ensemble_gate,
+    SubSharpeEnsemble,
 )
 
 from alpha_ranker import (
@@ -41,9 +43,11 @@ class AlphaPolicyTests(unittest.TestCase):
         self._env_backup = {
             "ASYNC_REQUIRE_ALL_CHECKS": os.getenv("ASYNC_REQUIRE_ALL_CHECKS"),
             "ASYNC_MIN_CHECKS_RATIO": os.getenv("ASYNC_MIN_CHECKS_RATIO"),
+            "ASYNC_ROBUST_SCORE_MIN": os.getenv("ASYNC_ROBUST_SCORE_MIN"),
         }
         os.environ.pop("ASYNC_REQUIRE_ALL_CHECKS", None)
         os.environ.pop("ASYNC_MIN_CHECKS_RATIO", None)
+        os.environ["ASYNC_ROBUST_SCORE_MIN"] = "1.0"
 
     def tearDown(self):
         for key, value in self._env_backup.items():
@@ -209,7 +213,18 @@ class ICStabilityTests(unittest.TestCase):
 class PreSubmissionGateTests(unittest.TestCase):
 
     def _gate(self, expr, sharpe=1.5, fitness=1.4, turnover=20, sub_sharpe=-1.0, error=""):
-        return pre_submission_gate(expr, sharpe, fitness, turnover, sub_sharpe, error)
+        res = type("Res", (), {
+            "expression": expr,
+            "sharpe": sharpe,
+            "fitness": fitness,
+            "turnover": turnover,
+            "sub_sharpe": sub_sharpe,
+            "error": error,
+            "all_passed": (error == ""),
+            "passed_checks": 8 if error == "" else 0,
+            "total_checks": 8 if error == "" else 0,
+        })
+        return pre_submission_gate_from_result(res)
 
     def test_passes_valid_expression(self):
         good = "rank(ts_corr(ts_zscore(close), ts_zscore(volume), 20))"
@@ -242,6 +257,9 @@ class PreSubmissionGateTests(unittest.TestCase):
             turnover = 25
             sub_sharpe = -1.0
             error = ""
+            all_passed = True
+            passed_checks = 8
+            total_checks = 8
         result = pre_submission_gate_from_result(FakeResult())
         self.assertTrue(result["passed"])
 
@@ -294,3 +312,186 @@ class ComplexityScoringTests(unittest.TestCase):
         score_with_penalty = complexity_score(expr)["score"]
         simple_score = complexity_score("rank(close)")["score"]
         self.assertLess(score_with_penalty, simple_score)
+
+
+# ============================================================
+# Sub-Sharpe Ensemble Tests
+# ============================================================
+
+class DummyWQClient:
+    """Mock WQ client that returns controlled sub_sharpe values."""
+
+    def __init__(self, results_per_split: list[float | None]):
+        self._results = results_per_split
+        self._idx = 0
+
+    def simulate(self, expression, region="USA", universe="TOP3000",
+                 delay=1, decay=6, neutralization="SUBINDUSTRY", truncation=0.08):
+        class FakeResult:
+            def __init__(self, sub):
+                self.sub_sharpe = sub
+                self.error = "" if sub is not None else "mock_error"
+        res = self._results[self._idx % len(self._results)]
+        self._idx += 1
+        return FakeResult(res)
+
+
+class SubSharpeEnsembleTests(unittest.TestCase):
+
+    def test_skips_already_passing(self):
+        """Skip ensemble when sharpe > 1.8 and sub_sharpe >= 0."""
+        client = DummyWQClient([0.5])
+        ensemble = SubSharpeEnsemble(client, n_splits=3)
+        result = ensemble.evaluate("rank(ts_mean(returns, 20))",
+                                   primary_sharpe=2.1,
+                                   primary_sub_sharpe=0.3)
+        self.assertTrue(result["skipped"])
+        self.assertEqual(result["skipped_reason"], "already_passing")
+        self.assertEqual(result["mean_sub_sharpe"], 0.3)
+
+    def test_skips_low_sharpe(self):
+        """Skip ensemble when primary Sharpe < 1.0 — won't pass gate anyway."""
+        client = DummyWQClient([0.1])
+        ensemble = SubSharpeEnsemble(client, n_splits=3)
+        result = ensemble.evaluate("rank(ts_mean(returns, 20))",
+                                   primary_sharpe=0.8,
+                                   primary_sub_sharpe=-0.5)
+        self.assertTrue(result["skipped"])
+        self.assertEqual(result["skipped_reason"], "primary_sharpe_too_low")
+
+    def test_runs_ensemble_borderline(self):
+        """Run ensemble for borderline case (sharpe between 1.0 and 1.8)."""
+        client = DummyWQClient([0.1, -0.2, 0.05, -0.1, 0.15])
+        ensemble = SubSharpeEnsemble(client, n_splits=5)
+        result = ensemble.evaluate("rank(ts_corr(close, volume, 20))",
+                                   primary_sharpe=1.5,
+                                   primary_sub_sharpe=-0.3)
+        self.assertFalse(result["skipped"])
+        self.assertEqual(result["n_splits"], 5)
+        self.assertIn("mean_sub_sharpe", result)
+        self.assertIn("std_sub_sharpe", result)
+        # mean of [0.1, -0.2, 0.05, -0.1, 0.15] = 0.0
+        self.assertAlmostEqual(result["mean_sub_sharpe"], 0.0, places=3)
+
+    def test_insufficient_splits_falls_back(self):
+        """Fewer than 2 successful splits → falls back to primary."""
+        client = DummyWQClient([None, None, 0.2])  # 2 failures
+        ensemble = SubSharpeEnsemble(client, n_splits=3)
+        result = ensemble.evaluate("rank(ts_mean(returns, 20))",
+                                   primary_sharpe=1.4,
+                                   primary_sub_sharpe=-0.5)
+        self.assertFalse(result["skipped"])
+        self.assertIn("insufficient_splits", result["skipped_reason"])
+        self.assertEqual(result["mean_sub_sharpe"], -0.5)  # fell back
+
+    def test_result_dict_structure(self):
+        """Every result dict has required keys."""
+        client = DummyWQClient([0.1, 0.2, 0.1])
+        ensemble = SubSharpeEnsemble(client, n_splits=3)
+        result = ensemble.evaluate("rank(ts_delta(close, 5))",
+                                   primary_sharpe=1.6,
+                                   primary_sub_sharpe=0.0)
+        for key in ("mean_sub_sharpe", "std_sub_sharpe", "n_splits", "skipped", "skipped_reason"):
+            self.assertIn(key, result)
+
+
+class SubSharpeEnsembleGateTests(unittest.TestCase):
+
+    def test_skipped_uses_primary_pass(self):
+        """skipped=True + primary sub_sharpe >= 0 → PASS."""
+        res = {"skipped": True, "skipped_reason": "already_passing",
+               "mean_sub_sharpe": 0.3, "std_sub_sharpe": 0.0, "n_splits": 0}
+        self.assertTrue(sub_sharpe_ensemble_gate("x", 0.3, res))
+
+    def test_skipped_uses_primary_fail(self):
+        """skipped=True + primary sub_sharpe in (-0.99, 0) → FAIL."""
+        res = {"skipped": True, "skipped_reason": "primary_sharpe_too_low",
+               "mean_sub_sharpe": -0.5, "std_sub_sharpe": 0.0, "n_splits": 0}
+        self.assertFalse(sub_sharpe_ensemble_gate("x", -0.5, res))
+
+    def test_ensemble_pass_mean_above_threshold(self):
+        """mean >= -0.5 AND std < 0.8 → PASS (override primary)."""
+        res = {"skipped": False, "skipped_reason": "",
+               "mean_sub_sharpe": -0.3, "std_sub_sharpe": 0.5, "n_splits": 5}
+        # Primary is -0.3 which is in the reject band, but ensemble overrides
+        self.assertTrue(sub_sharpe_ensemble_gate("x", -0.3, res))
+
+    def test_ensemble_fail_high_std(self):
+        """mean >= -0.5 but std >= 0.8 → fall back to primary."""
+        res = {"skipped": False, "skipped_reason": "",
+               "mean_sub_sharpe": -0.2, "std_sub_sharpe": 1.1, "n_splits": 5}
+        # Primary -0.2 is in reject band; std too high → use primary → FAIL
+        self.assertFalse(sub_sharpe_ensemble_gate("x", -0.2, res))
+
+    def test_ensemble_pass_primary_already_passing(self):
+        """mean >= -0.5, std < 0.8, but primary already positive → PASS."""
+        res = {"skipped": False, "skipped_reason": "",
+               "mean_sub_sharpe": 0.1, "std_sub_sharpe": 0.3, "n_splits": 5}
+        self.assertTrue(sub_sharpe_ensemble_gate("x", 0.1, res))
+
+    def test_ensemble_fail_mean_too_low(self):
+        """mean < -0.5 → fall back to primary."""
+        res = {"skipped": False, "skipped_reason": "",
+               "mean_sub_sharpe": -0.8, "std_sub_sharpe": 0.4, "n_splits": 5}
+        # Primary falls back, is -0.5 in reject band?  -0.5 > -0.99 and < 0 → FAIL
+        self.assertFalse(sub_sharpe_ensemble_gate("x", -0.5, res))
+
+
+class EnsembleIntegrationTests(unittest.TestCase):
+    """Test passes_quality_gate_v2 with ensemble override logic."""
+
+    def setUp(self):
+        self._env_backup = {
+            "ASYNC_ROBUST_SCORE_MIN": os.getenv("ASYNC_ROBUST_SCORE_MIN"),
+        }
+        os.environ["ASYNC_ROBUST_SCORE_MIN"] = "1.0"
+
+    def tearDown(self):
+        for k, v in self._env_backup.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+
+    def _result(self, s, sub):
+        class R:
+            pass
+        R.sharpe = s
+        R.sub_sharpe = sub
+        R.fitness = 1.5
+        R.turnover = 20.0
+        R.error = ""
+        R.all_passed = True
+        R.passed_checks = 8
+        R.total_checks = 8
+        R.self_corr = 0.0
+        R.expression = "rank(ts_mean(returns, 20))"
+        return R(), None
+
+    def test_ensemble_overrides_negative_sub_sharpe(self):
+        """Alpha with sub_sharpe=-0.3 should pass via ensemble override."""
+        ensemble_res = {
+            "skipped": False, "skipped_reason": "",
+            "mean_sub_sharpe": 0.05, "std_sub_sharpe": 0.3, "n_splits": 5,
+        }
+        result, _ = self._result(1.9, -0.3)
+        self.assertTrue(passes_quality_gate_v2(result, HIGH_THROUGHPUT_THRESHOLDS,
+                                               ensemble_result=ensemble_res))
+
+    def test_primary_used_when_ensemble_fails(self):
+        """Alpha with sub_sharpe=-0.3 should FAIL when ensemble also fails."""
+        ensemble_res = {
+            "skipped": False, "skipped_reason": "",
+            "mean_sub_sharpe": -0.7, "std_sub_sharpe": 0.9, "n_splits": 5,
+        }
+        result, _ = self._result(1.9, -0.3)
+        self.assertFalse(passes_quality_gate_v2(result, HIGH_THROUGHPUT_THRESHOLDS,
+                                                 ensemble_result=ensemble_res))
+
+    def test_backward_compatible_no_ensemble(self):
+        """Without ensemble_result, existing logic unchanged."""
+        result, _ = self._result(1.9, 0.5)
+        self.assertTrue(passes_quality_gate_v2(result, HIGH_THROUGHPUT_THRESHOLDS))
+
+        result2, _ = self._result(2.0, -0.5)
+        self.assertFalse(passes_quality_gate_v2(result2, HIGH_THROUGHPUT_THRESHOLDS))

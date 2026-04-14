@@ -11,10 +11,13 @@ Scoring logic based on:
 """
 
 import re
+from functools import lru_cache
 from typing import List, Tuple
 import os
 import joblib
 import warnings
+
+from alpha_policy import estimate_ic_stability, estimate_self_corr_risk
 
 # Suppress sklearn warnings if model loaded
 warnings.filterwarnings('ignore', category=UserWarning)
@@ -69,7 +72,8 @@ HIGH_VALUE_MARKERS = {
     "ts_covariance": 9,
     "ts_regression": 12,
     "ts_skewness": 10,
-    "ts_decay_linear": 8,
+    "ts_decay_linear": 15,  # Boosted for Fitness
+    "ts_mean": 12,          # Added for Fitness smoothing
     "ts_product": 8,
 
     # Quality factors: sharpe-adjusted, std normalized
@@ -93,7 +97,7 @@ HIGH_VALUE_MARKERS = {
     "bucket": 12,
     "hump": 12,
     "ts_scale": 10,
-    "ts_av_diff": 10,
+    "ts_av_diff": 12,   # Boosted for reversion signals
     "vector_neut": 18,  # Boosted: extremely powerful for neutralization
     "jump_decay": 10,
     "normalize": 8,
@@ -129,6 +133,7 @@ LOW_VALUE_PENALTIES = {
 }
 
 
+@lru_cache(maxsize=20000)
 def count_nesting_depth(expr: str) -> int:
     """Count maximum nesting depth of parentheses"""
     depth = 0
@@ -142,6 +147,7 @@ def count_nesting_depth(expr: str) -> int:
     return max_depth
 
 
+@lru_cache(maxsize=20000)
 def count_operators(expr: str) -> int:
     """Count number of operators used"""
     ops = re.findall(r'[a-zA-Z_][a-zA-Z0-9_]*\s*\(', expr)
@@ -182,17 +188,19 @@ def has_time_comparison(expr: str) -> bool:
 # - >5 unique lookback windows → suspicious overfitting
 # - >3 nesting levels deep → fragile
 # - >8 operators → untrustworthy
-MAX_UNIQUE_LOOKBACKS = 5
-MAX_NESTING_DEPTH = 3
-MAX_OPERATORS = 8
+MAX_UNIQUE_LOOKBACKS = 6
+MAX_NESTING_DEPTH = 6
+MAX_OPERATORS = 16
 
 
+@lru_cache(maxsize=20000)
 def count_unique_lookbacks(expr: str) -> int:
     """Count distinct numeric lookback constants in expression."""
     numbers = re.findall(r'\b\d+\b', expr)
     return len(set(numbers))
 
 
+@lru_cache(maxsize=20000)
 def expression_complexity_penalty(expr: str) -> float:
     """
     Return a penalty (positive float) to subtract from score.
@@ -219,8 +227,8 @@ def expression_complexity_penalty(expr: str) -> float:
         penalty += 5.0 * (n_ops - MAX_OPERATORS)
 
     # Lookback proliferation penalty
-    if unique_lookbacks > MAX_UNIQUE_LOOKBACKS:
-        penalty += 8.0 * (unique_lookbacks - MAX_UNIQUE_LOOKBACKS)
+    if unique_lookbacks >= MAX_UNIQUE_LOOKBACKS:
+        penalty += 8.0 * max(0, unique_lookbacks - MAX_UNIQUE_LOOKBACKS + 1)
 
     return penalty
 
@@ -265,6 +273,7 @@ def passes_complexity_check(expression: str, floor: float = EXPRESSION_COMPLEXIT
     return complexity_score(expression)["score"] >= floor
 
 
+@lru_cache(maxsize=20000)
 def score_expression(expr: str) -> Tuple[float, str]:
     """
     Score an alpha expression from 0-100.
@@ -305,7 +314,7 @@ def score_expression(expr: str) -> Tuple[float, str]:
         X = pd.DataFrame([feats])
         try:
             prob = xgb_model.predict_proba(X)[0][1] # Probability of getting Sharpe > 1.0
-            if prob < 0.3:
+            if prob < 0.15:
                 ml_penalty = -50
                 reasons.append(f"ML_REJECT:prob={prob:.2f}")
             elif prob > 0.7:
@@ -384,9 +393,21 @@ def score_expression(expr: str) -> Tuple[float, str]:
         score -= complexity_penalty
         reasons.append(f"-{complexity_penalty:.0f}:complexity")
 
+    # === SELF-CORRELATION RISK PENALTY ===
+    # Pre-simulation proxy using structural heuristics / learned weights.
+    # Risk score in [0, 1]: penalise high-risk expressions before wasting WQ quota.
+    self_corr_risk = estimate_self_corr_risk(expr)
+    if self_corr_risk > 0.60:
+        penalty = min(30.0, self_corr_risk * 50.0)
+        score -= penalty
+        reasons.append(f"-{penalty:.0f}:self_corr_risk({self_corr_risk:.2f})")
+    elif self_corr_risk < 0.20:
+        score += 5
+        reasons.append("+5:low_self_corr_risk")
+
     # Clamp to 0-100
     score = max(0.0, min(100.0, score))
-    reason_str = ", ".join(reasons[:5])  # top 5 reasons
+    reason_str = ", ".join(reasons[:6])  # top 6 reasons
 
     return round(score, 1), reason_str
 
@@ -515,6 +536,370 @@ def filter_and_rank(
             )
 
     return filtered
+
+
+# ============================================================
+# Meta-Ranker ML Model — expression-level scoring signals
+# ============================================================
+
+def regime_sensitivity_score(expression: str) -> float:
+    """
+    Score based on how well alpha adapts to market regimes.
+    Returns 0-1 where 1 = regime-adaptive.
+
+    Look for:
+    - ts_skewness, ts_kurtosis (distribution awareness)
+    - vol regime operators (ts_std_dev on returns)
+    - trade_when (conditional logic)
+    - if_else (regime branching)
+
+    Penalize:
+    - Pure momentum without any adaptation
+    - Static lookback without conditional logic
+    """
+    expr = (expression or "").lower()
+    if not expr:
+        return 0.0
+
+    score = 0.0
+
+    # Adaptive regime operators — positive signals
+    if any(op in expr for op in ["ts_skewness", "ts_kurtosis"]):
+        score += 0.30
+    if "ts_std_dev" in expr and "returns" in expr:
+        score += 0.25  # vol-awareness
+    if "trade_when" in expr:
+        score += 0.25
+    if "if_else" in expr:
+        score += 0.20
+    if "signed_power" in expr or "sign(" in expr:
+        score += 0.10  # sign-awareness = mild regime sensitivity
+    if "ts_zscore" in expr or "zscore(" in expr:
+        score += 0.15  # normalization = mild regime robustness
+
+    # Static momentum with no adaptation — penalize
+    static_momentum = (
+        bool(re.search(r'^-?rank\(ts_mean\(returns,\s*\d+\)\)$', expr))
+        or bool(re.search(r'^-?rank\(ts_delta\(close,\s*\d+\)\)$', expr))
+    )
+    if static_momentum and score < 0.3:
+        score = max(0.0, score - 0.25)
+
+    # Penalize very short expressions that are pure momentum
+    if len(expr) < 40 and "ts_std_dev" not in expr and "trade_when" not in expr:
+        score = max(0.0, score - 0.15)
+
+    return max(0.0, min(1.0, score))
+
+
+def ic_decay_probability(
+    expression: str,
+    history_ic: list[float] | None = None,
+) -> float:
+    """
+    Estimate probability that IC will decay (become worse over time).
+    If history_ic provided: use real rolling IC data.
+    Otherwise: use expression structure heuristics.
+
+    Returns 0-1 where 1 = high decay risk (avoid).
+
+    Penalize:
+    - Long lookbacks (overfitted to history)
+    - Mean-reversion without adaptation
+    - High complexity
+    """
+    # Use real data if available
+    if history_ic is not None and len(history_ic) >= 3:
+        ic_series = list(history_ic)
+        n = len(ic_series)
+        # Rolling decay: compare recent half vs older half
+        mid = n // 2
+        older = ic_series[:mid]
+        recent = ic_series[mid:]
+        if older and recent:
+            older_mean = sum(older) / len(older)
+            recent_mean = sum(recent) / len(recent)
+            if older_mean > 0 and recent_mean < older_mean * 0.5:
+                return min(1.0, 0.7 + 0.1 * (1 - recent_mean / max(older_mean, 0.001)))
+            elif recent_mean < older_mean:
+                decay_rate = (older_mean - recent_mean) / max(older_mean, 0.001)
+                return max(0.0, min(1.0, decay_rate * 0.8))
+        return 0.2  # stable IC — low decay risk
+
+    # Heuristic scoring from expression structure
+    expr = (expression or "").lower()
+    if not expr:
+        return 0.5
+
+    risk = 0.0
+
+    # Long lookbacks → overfitting risk
+    numbers = re.findall(r'\b\d+\b', expr)
+    max_lookback = max((int(n) for n in numbers if int(n) > 0), default=0)
+    if max_lookback > 252:
+        risk += 0.30
+    elif max_lookback > 120:
+        risk += 0.20
+    elif max_lookback > 60:
+        risk += 0.10
+
+    # Mean-reversion without adaptation signals
+    if "ts_mean" in expr and "ts_std_dev" not in expr and "zscore" not in expr:
+        risk += 0.15
+    if "ts_decay_linear" in expr and "trade_when" not in expr and "if_else" not in expr:
+        risk += 0.10
+
+    # High complexity → overfitting
+    depth = count_nesting_depth(expression)
+    n_ops = count_operators(expression)
+    if depth > 5:
+        risk += 0.20
+    elif depth > 3:
+        risk += 0.10
+    if n_ops > 7:
+        risk += 0.15
+    elif n_ops > 5:
+        risk += 0.08
+
+    # Long expression = more ways to overfit
+    if len(expr) > 300:
+        risk += 0.15
+    elif len(expr) > 200:
+        risk += 0.08
+
+    return max(0.0, min(1.0, risk))
+
+
+def cross_regime_score(expression: str) -> float:
+    """
+    Estimate how well alpha performs across different market regimes.
+    Score based on expression structural features:
+    - Diversification (multi-field)
+    - Normalization (rank, scale, zscore)
+    - Hedging (signed_power, sign)
+    - Volatility awareness (ts_std_dev on returns)
+    Returns 0-1 where 1 = strong cross-regime alpha.
+    """
+    expr = (expression or "").lower()
+    if not expr:
+        return 0.0
+
+    score = 0.0
+
+    # Diversification signals
+    if has_multi_field(expr):
+        score += 0.20
+    if has_cross_sectional(expr):
+        score += 0.20  # group ops span regimes well
+
+    # Normalization = cross-regime robustness
+    if "rank(" in expr:
+        score += 0.12
+    if "ts_zscore" in expr or "zscore(" in expr:
+        score += 0.10
+    if "scale(" in expr or "signed_power" in expr:
+        score += 0.08
+
+    # Volatility awareness — key for cross-regime
+    if "ts_std_dev" in expr and "returns" in expr:
+        score += 0.20
+    if "ts_mean(abs(" in expr or "ts_mean(abs(returns" in expr:
+        score += 0.15  # abs-returns = vol proxy
+
+    # Regime conditioning
+    if "trade_when" in expr or "if_else" in expr:
+        score += 0.15
+
+    # Quality filter — masks regime effects
+    if "winsorize" in expr or "densify" in expr:
+        score += 0.10
+
+    return max(0.0, min(1.0, score))
+
+
+def expression_simplicity_score(expression: str) -> float:
+    """
+    Penalize overly complex expressions.
+    Returns 0-1 where 1 = simple/preferred.
+
+    Penalties:
+    - >5 unique lookback values → penalty
+    - >3 nesting depth → penalty
+    - >8 operators → penalty
+    """
+    if not expression:
+        return 0.0
+
+    unique_lookbacks = count_unique_lookbacks(expression)
+    depth = count_nesting_depth(expression)
+    n_ops = count_operators(expression)
+
+    score = 1.0
+
+    # Lookback proliferation penalty
+    if unique_lookbacks > 5:
+        score -= 0.30
+    elif unique_lookbacks > 3:
+        score -= 0.15
+
+    # Nesting depth penalty
+    if depth > 6:
+        score -= 0.35
+    elif depth > 4:
+        score -= 0.20
+    elif depth > 3:
+        score -= 0.10
+
+    # Operator count penalty
+    if n_ops > 10:
+        score -= 0.30
+    elif n_ops > 8:
+        score -= 0.20
+    elif n_ops > 6:
+        score -= 0.10
+
+    return max(0.0, min(1.0, score))
+
+
+def turnover_prediction(expression: str) -> float:
+    """
+    Predict annual turnover % from expression structure.
+    Returns estimated annual turnover (0.0 to 2.0+ = 200%).
+
+    High-frequency signals:
+    - Short delays (ts_delta with small values like 1-3)
+    - ts_delta on small windows
+    - Large weights on short-term volume
+    - Large weights on raw close without smoothing
+    - No rank() wrapping (raw signals change daily)
+    """
+    expr = (expression or "").lower()
+    if not expr:
+        return 0.5
+
+    # Base turnover estimate
+    base = 1.0  # 100% annual turnover baseline
+
+    # Short ts_delta lookbacks → high turnover
+    short_delta_matches = re.findall(r'ts_delta\([^)]*,\s*(\d+)\s*\)', expr)
+    for raw in short_delta_matches:
+        val = int(raw)
+        if val <= 1:
+            base += 0.30
+        elif val <= 3:
+            base += 0.15
+        elif val <= 5:
+            base += 0.05
+
+    # Short ts_mean lookbacks → smoothing reduces turnover
+    short_mean_matches = re.findall(r'ts_mean\([^)]*,\s*(\d+)\s*\)', expr)
+    for raw in short_mean_matches:
+        val = int(raw)
+        if val <= 5:
+            base -= 0.10  # still some smoothing
+        elif val >= 40:
+            base -= 0.15  # strong smoothing
+
+    # ts_decay_linear — reduces turnover
+    if "ts_decay_linear" in expr:
+        decay_matches = re.findall(r'ts_decay_linear\([^)]*,\s*(\d+)\s*\)', expr)
+        for raw in decay_matches:
+            val = int(raw)
+            if val >= 10:
+                base -= 0.20
+            elif val >= 5:
+                base -= 0.10
+
+    # rank() wrapping — dramatically reduces turnover
+    rank_count = expr.count("rank(")
+    if rank_count >= 2:
+        base -= 0.25
+    elif rank_count == 1:
+        base -= 0.10
+
+    # ts_delay — can increase or decrease depending on direction
+    delay_matches = re.findall(r'ts_delay\([^)]*,\s*(-?\d+)\s*\)', expr)
+    for raw in delay_matches:
+        val = int(raw)
+        if val < 0:
+            base += 0.20  # negative delay = future peek → high turnover signal
+        elif val >= 20:
+            base -= 0.10
+
+    # sign/signed_power — momentum signal, medium turnover
+    if "signed_power" in expr or expr.count("sign(") > 0:
+        base += 0.05
+
+    # No smoothing at all → high turnover
+    if "ts_mean" not in expr and "ts_decay" not in expr and "rank(" not in expr:
+        base += 0.15
+
+    return max(0.0, base)
+
+
+def score_with_meta_model(candidate: str) -> dict:
+    """
+    Composite meta-model scoring for an alpha candidate.
+
+    Returns:
+        {
+            'expected_sharpe': float,         # 0-1 proxy from structural signals
+            'decay_probability': float,       # 0-1 IC decay risk
+            'cross_regime_score': float,      # 0-1 cross-regime robustness
+            'ic_stability_score': float,      # 0-1 IC stability
+            'simplicity_score': float,        # 0-1 structural simplicity
+            'turnover_prediction': float,      # estimated annual turnover
+            'composite_score': float,         # weighted combination
+        }
+    """
+    if not candidate:
+        return {
+            "expected_sharpe": 0.0,
+            "decay_probability": 1.0,
+            "cross_regime_score": 0.0,
+            "ic_stability_score": 0.0,
+            "simplicity_score": 0.0,
+            "turnover_prediction": 0.0,
+            "composite_score": 0.0,
+        }
+
+    expr = candidate
+    score, _ = score_expression(expr)
+
+    # Normalize to 0-1
+    expected_sharpe = max(0.0, min(1.0, score / 100.0))
+
+    decay_prob = ic_decay_probability(expr)
+    cross_regime = cross_regime_score(expr)
+    ic_stability = estimate_ic_stability(
+        sharpe=expected_sharpe * 3.0,  # approximate
+        fitness=expected_sharpe * 2.0,
+        turnover=turnover_prediction(expr) * 50.0,  # approximate to real units
+        sub_sharpe=-1.0,
+    )
+    simplicity = expression_simplicity_score(expr)
+    turnover = turnover_prediction(expr)
+
+    # Composite score — weighted blend emphasising non-decay and stability
+    # Higher = better
+    composite = (
+        0.25 * expected_sharpe
+        + 0.20 * (1.0 - decay_prob)           # penalise decay risk
+        + 0.20 * cross_regime
+        + 0.15 * ic_stability
+        + 0.10 * simplicity
+        + 0.10 * (1.0 - min(turnover / 2.0, 1.0))  # penalise high turnover
+    )
+
+    return {
+        "expected_sharpe": round(expected_sharpe, 4),
+        "decay_probability": round(decay_prob, 4),
+        "cross_regime_score": round(cross_regime, 4),
+        "ic_stability_score": round(ic_stability, 4),
+        "simplicity_score": round(simplicity, 4),
+        "turnover_prediction": round(turnover, 4),
+        "composite_score": round(composite, 4),
+    }
 
 
 # ============================================================

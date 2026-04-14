@@ -19,6 +19,15 @@ class GeneratorHypothesisModeTests(unittest.TestCase):
             self.assertIn("group_neutralize(", expr)
             self.assertTrue(expr.startswith("group_neutralize(ts_decay_linear("))
 
+    def test_hybrid_hypothesis_mode_keeps_multiple_strategy_arms(self):
+        gen = AlphaGenerator(generation_mode="hybrid_hypothesis")
+        batch = gen.generate_batch(n=40, use_rag=False)
+        self.assertGreaterEqual(len(batch), 20)
+
+        mutation_types = {cand.mutation_type for cand in batch}
+        self.assertIn("hypothesis_driven", mutation_types)
+        self.assertGreaterEqual(len(mutation_types), 3)
+
     def test_pipeline_wires_generator_mode_from_env(self):
         old_mode = os.getenv("GENERATOR_MODE")
         os.environ["GENERATOR_MODE"] = "hypothesis_driven"

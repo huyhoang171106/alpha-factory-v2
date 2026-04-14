@@ -10,6 +10,7 @@ import json
 import logging
 import requests
 import threading
+import hashlib
 from datetime import datetime, timedelta
 from typing import Optional
 from dataclasses import dataclass, field
@@ -27,13 +28,29 @@ logger = logging.getLogger(__name__)
 
 API_BASE = "https://api.worldquantbrain.com"
 MAX_CONCURRENT = int(os.getenv("WQ_MAX_CONCURRENT", "4"))   # 4 concurrent sims for speed
-POLL_INTERVAL = int(os.getenv("WQ_POLL_INTERVAL", "10"))    # 10s polling for faster results
+POLL_INTERVAL = int(os.getenv("WQ_POLL_INTERVAL", "5"))    # 5s polling for faster results
 MAX_WAIT_TIME = int(os.getenv("WQ_MAX_WAIT_TIME", "600"))   # 10 min max wait — WQ server can be slow
 SIM_SUBMIT_RETRIES = max(0, int(os.getenv("WQ_SIM_SUBMIT_RETRIES", "3")))
 SIM_SUBMIT_BACKOFF = max(3, int(os.getenv("WQ_SIM_SUBMIT_BACKOFF", "8")))
 SIM_SUBMIT_FAIL_WINDOW = int(os.getenv("WQ_SIM_FAIL_WINDOW", "20"))
 SIM_CIRCUIT_BREAKER_THRESHOLD = float(os.getenv("WQ_SIM_BREAKER_THRESHOLD", "0.80"))
 SIM_CIRCUIT_BREAKER_COOLDOWN = int(os.getenv("WQ_SIM_BREAKER_COOLDOWN", "90"))
+
+
+def _safe_expr_ref(expression: str) -> str:
+    return hashlib.sha256((expression or "").strip().encode("utf-8")).hexdigest()[:12]
+
+
+def _safe_alpha_ref(alpha_id: str) -> str:
+    return hashlib.sha256((alpha_id or "").strip().encode("utf-8")).hexdigest()[:12]
+
+
+def _mask_email(email: str | None) -> str:
+    if not email or "@" not in email:
+        return "(unset)"
+    name, domain = email.split("@", 1)
+    prefix = name[:1] if name else "*"
+    return f"{prefix}***@{domain}"
 
 
 @dataclass
@@ -52,6 +69,7 @@ class SimResult:
     alpha_url: str = ""
     error: str = ""
     sub_sharpe: float = -1.0
+    self_corr: float = 0.0  # Self-correlation (wl13 in WQ)
     # Settings used
     region: str = "USA"
     universe: str = "TOP3000"
@@ -95,7 +113,7 @@ class WQClient:
 
     def _login(self):
         """Authenticate with WQ Brain API"""
-        logger.info(f"Logging in as {self.email}...")
+        logger.info("Logging in as %s...", _mask_email(self.email))
         self.session.auth = (self.email, self.password)
         r = self.session.post(f"{API_BASE}/authentication")
         data = r.json()
@@ -111,7 +129,7 @@ class WQClient:
                         "Login requires biometric flow. Set WQ_INTERACTIVE_AUTH=1 for manual continuation."
                     )
             else:
-                raise ConnectionError(f"Login failed: {data}")
+                raise ConnectionError("Login failed: unexpected authentication response")
 
         logger.info("OK: Logged in to WQ Brain!")
 
@@ -269,7 +287,7 @@ class WQClient:
                         err_detail = (r.text if r is not None else "") or "(empty body)"
                     result.error = f"{error_code}: {err_detail}"
                     self._record_submit_outcome(True)
-                    logger.error(f"❌ Submit failed for: {expression[:50]}... [{error_code}]")
+                    logger.error("Submit failed for expr_id=%s [%s]", _safe_expr_ref(expression), error_code)
                     return result
                 break
             except Exception as e:
@@ -285,7 +303,7 @@ class WQClient:
         self._record_submit_outcome(False)
 
         progress_url = r.headers['Location']
-        logger.info(f"📤 Submitted: {expression[:60]}... → polling...")
+        logger.info("Submitted expr_id=%s for simulation; polling...", _safe_expr_ref(expression))
 
         # 2. Poll for completion
         start_time = time.time()
@@ -325,7 +343,7 @@ class WQClient:
             time.sleep(POLL_INTERVAL)
 
         result.error = "Simulation timeout"
-        logger.warning(f"⏰ Timeout for: {expression[:50]}...")
+        logger.warning("Simulation timeout for expr_id=%s", _safe_expr_ref(expression))
         return result
 
     def _parse_is_metrics(self, is_data: dict, result: SimResult):
@@ -335,6 +353,8 @@ class WQClient:
         result.turnover = round(is_data.get('turnover', 0) * 100, 2)
         result.returns = is_data.get('returns', 0)
         result.drawdown = is_data.get('drawdown', 0)
+        # Parse self-correlation (wl13 in WQ)
+        result.self_corr = abs(is_data.get('wl13', 0.0))
 
         # Check pass/fail for specific checks if available
         checks = is_data.get('checks', [])
@@ -366,9 +386,13 @@ class WQClient:
             
             status = "[PASS]" if result.all_passed else f"[FAIL] {result.passed_checks}/{result.total_checks}"
             logger.info(
-                f"  {status} | Sharpe: {result.sharpe:.3f} | "
-                f"Fitness: {result.fitness:.2f} | Turnover: {result.turnover:.1f}% | "
-                f"{result.alpha_url}"
+                "  %s | Sharpe: %.3f | Fitness: %.2f | Turnover: %.1f%% | expr_id=%s brain_ref=%s",
+                status,
+                result.sharpe,
+                result.fitness,
+                result.turnover,
+                _safe_expr_ref(result.expression),
+                _safe_alpha_ref(result.alpha_id),
             )
 
         except Exception as e:
@@ -439,11 +463,11 @@ class WQClient:
                             stats["circuit_breaker"] += 1
                         if "parse error" in err_l:
                             stats["parse_failed"] += 1
-                        logger.warning(f"  [ERROR] [{i}/{total}] Failed: {res.expression[:50]}... Error: {res.error}")
+                        logger.warning("  [ERROR] [%s/%s] Failed expr_id=%s Error: %s", i, total, _safe_expr_ref(res.expression), res.error)
                     else:
                         stats["success"] += 1
                         status = "[PASS]" if res.all_passed else f"[FAIL]"
-                        logger.info(f"  {status} [{i}/{total}] {res.expression[:40]}... (Sharpe: {res.sharpe:.2f})")
+                        logger.info("  %s [%s/%s] expr_id=%s (Sharpe: %.2f)", status, i, total, _safe_expr_ref(res.expression), res.sharpe)
                 except Exception as exc:
                     logger.error(f"  ❌ Exception during threaded sim: {exc}")
                     
@@ -461,7 +485,7 @@ class WQClient:
                 f"{API_BASE}/alphas/{alpha_id}/submit"
             )
             if r and r.status_code in (200, 201, 202):
-                logger.info(f"🚀 Submitted alpha: {alpha_id}")
+                logger.info("Submitted alpha for review brain_ref=%s", _safe_alpha_ref(alpha_id))
                 return True
             else:
                 logger.warning(f"Submit response: {r.status_code if r else 'None'}")
@@ -479,7 +503,7 @@ class WQClient:
             if r is None:
                 return False, "submit_no_response"
             if r.status_code in (200, 201, 202):
-                logger.info(f"🚀 Submitted alpha: {alpha_id}")
+                logger.info("Submitted alpha for review brain_ref=%s", _safe_alpha_ref(alpha_id))
                 return True, ""
             if r.status_code == 429:
                 return False, "submit_rate_limited_429"
@@ -539,33 +563,39 @@ class WQClient:
             return "submitted"
         return "unknown"
 
-    def get_submission_decision(self, alpha_id: str) -> tuple[str, str, str]:
+    def get_submission_decision(self, alpha_id: str) -> tuple[str, str, str, float]:
         """
         Poll alpha details and infer review decision.
-        Returns: (decision, error_class, detail)
+        Returns: (decision, error_class, detail, self_corr)
         decision: accepted | rejected | submitted | unknown
+        self_corr: wl13 from the alpha IS metrics (0.0 if unavailable)
         """
         try:
             r = self._api_request("get", f"{API_BASE}/alphas/{alpha_id}")
             if r is None:
-                return "unknown", "submit_status_no_response", "no response"
+                return "unknown", "submit_status_no_response", "no response", 0.0
             if r.status_code in (401, 403):
-                return "unknown", f"submit_status_auth_{r.status_code}", ""
+                return "unknown", f"submit_status_auth_{r.status_code}", "", 0.0
             if r.status_code == 429:
-                return "submitted", "", "rate limited while polling"
+                return "submitted", "", "rate limited while polling", 0.0
             if r.status_code >= 500:
-                return "unknown", f"submit_status_server_{r.status_code}", ""
+                return "unknown", f"submit_status_server_{r.status_code}", "", 0.0
             if r.status_code >= 400:
-                return "unknown", f"submit_status_payload_{r.status_code}", ""
+                return "unknown", f"submit_status_payload_{r.status_code}", "", 0.0
             data = r.json()
             state = self._extract_submission_state(data)
-            return state, "", ""
+            # Extract wl13 self-correlation from IS metrics
+            self_corr = 0.0
+            is_data = data.get("is", {})
+            if isinstance(is_data, dict):
+                self_corr = abs(float(is_data.get("wl13", 0.0)))
+            return state, "", "", self_corr
         except requests.exceptions.Timeout:
-            return "unknown", "submit_status_timeout", ""
+            return "unknown", "submit_status_timeout", "", 0.0
         except requests.exceptions.ConnectionError:
-            return "unknown", "submit_status_connection", ""
+            return "unknown", "submit_status_connection", "", 0.0
         except Exception as e:
-            return "unknown", "submit_status_exception", str(e)[:200]
+            return "unknown", "submit_status_exception", str(e)[:200], 0.0
 
 
 # ============================================================
@@ -578,4 +608,4 @@ if __name__ == "__main__":
     result = client.simulate("-rank(ts_delta(close, 5))")
     print(f"\nResult: Sharpe={result.sharpe}, Fitness={result.fitness}, "
           f"Turnover={result.turnover}%, Submittable={result.is_submittable}")
-    print(f"URL: {result.alpha_url}")
+    print(f"BrainRef: {_safe_alpha_ref(result.alpha_id)}")

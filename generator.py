@@ -17,9 +17,9 @@ from alpha_seeds import (
     STAT_ARB_ALPHAS, SIGNAL_PROCESSING_ALPHAS,
     ARXIV_ELITE_ALPHAS, ADVANCED_OPS_ALPHAS
 )
-from alpha_dna import DNAWeights
+from alpha_dna import DNAWeights, get_adaptive_weights
 from alpha_candidate import AlphaCandidate
-from alpha_policy import compute_llm_budget_ratio
+from alpha_policy import compute_llm_budget_ratio, compute_arm_budget_ratio, estimate_self_corr_risk
 try:
     from alpha_rag import RAGMutator
 except ImportError:
@@ -53,50 +53,47 @@ class AlphaGenerator:
     ]
 
     HYPOTHESIS_BLOCKS = {
-        "mean_reversion": {
+        "mean_reversion_advanced": {
             "base": [
-                lambda d: f"returns",
-                lambda d: f"ts_delta(close, {d})",
+                lambda d: f"(close - ts_min(low, {d})) / (ts_max(high, {d}) - ts_min(low, {d}) + 0.001)",
+                lambda d: f"ts_rank(returns, {d})",
             ],
             "filters": [
-                lambda d: f"abs(returns)",
-                lambda d: f"volume / adv20",
-                lambda d: f"adv20 / ts_mean(adv20, {d})",
-            ],
-            "direction": "-",
-        },
-        "momentum": {
-            "base": [
-                lambda d: f"returns",
-                lambda d: f"ts_mean(returns, {d})",
-            ],
-            "filters": [
-                lambda d: f"volume / adv20",
-                lambda d: f"adv20 / ts_mean(adv20, {d})",
-            ],
-            "direction": "+",
-        },
-        "liquidity": {
-            "base": [
-                lambda d: f"volume / adv20",
-                lambda d: f"adv20 / ts_mean(adv20, {d})",
-            ],
-            "filters": [
-                lambda d: f"returns",
-                lambda d: f"abs(returns)",
-            ],
-            "direction": "+",
-        },
-        "overreaction": {
-            "base": [
-                lambda d: f"returns",
-                lambda d: f"abs(returns)",
-            ],
-            "filters": [
-                lambda d: f"adv20 / ts_mean(adv20, {d})",
+                lambda d: f"ts_std_dev(returns, {d}) / ts_mean(ts_std_dev(returns, {d}), {d*2})",
                 lambda d: f"volume / adv20",
             ],
             "direction": "-",
+        },
+        "price_intensity": {
+            "base": [
+                lambda d: f"returns / (volume / adv20 + 0.001)",
+                lambda d: f"ts_delta(close, {d}) / ts_std_dev(close, {d})",
+            ],
+            "filters": [
+                lambda d: f"ts_rank(abs(returns), {d})",
+                lambda d: f"ts_corr(returns, volume, {d})",
+            ],
+            "direction": "-",
+        },
+        "liquidity_impact": {
+            "base": [
+                lambda d: f"abs(returns) / (volume * close + 1)",
+                lambda d: f"(vwap - close) / vwap",
+            ],
+            "filters": [
+                lambda d: f"rank(ts_std_dev(returns, {d}))",
+            ],
+            "direction": "+",
+        },
+        "momentum_structural": {
+            "base": [
+                lambda d: f"ts_mean(returns, {d}) / ts_std_dev(returns, {d})",
+                lambda d: f"ts_rank(ts_mean(close, {d}), {d*2})",
+            ],
+            "filters": [
+                lambda d: f"ts_corr(close, volume, {d}) > 0",
+            ],
+            "direction": "+",
         },
     }
 
@@ -125,6 +122,8 @@ class AlphaGenerator:
         self.rag_mutator = RAGMutator() if RAGMutator else None
         self._hypotheses = self._load_hypotheses()
         self.generation_mode = (generation_mode or os.getenv("GENERATOR_MODE", "legacy")).strip().lower()
+        # Per-arm adaptive weights wired to WQ acceptance rates
+        self._arm_weights: Dict[str, float] = {}
 
     def _load_hypotheses(self) -> List[dict]:
         path = os.path.join(os.path.dirname(__file__), "data", "hypotheses", "iqc_core.json")
@@ -132,6 +131,20 @@ class AlphaGenerator:
             with open(path, 'r', encoding='utf-8') as f:
                 return json.load(f)
         return []
+
+    # ── Adaptive arm weights (WQ acceptance wiring) ─────────────
+    def update_arm_weights(self, acceptance_rates: Dict[str, float]) -> None:
+        """
+        Update internal arm weights using WQ acceptance rates.
+
+        Should be called from the pipeline after tracker.acceptance_rate_by_arm()
+        is fetched and before generate_batch().
+
+        Args:
+            acceptance_rates: dict[arm_name] -> Bayesian-smoothed P(accept | submitted)
+                              e.g. {"llm": 0.75, "evolved": 0.40, ...}
+        """
+        self._arm_weights = get_adaptive_weights(acceptance_rates)
 
     def _hash(self, expr: str) -> str:
         normalized = expr.strip().lower().replace(" ", "")
@@ -145,6 +158,14 @@ class AlphaGenerator:
         mutation_type: str = "seed",
         family: str = "",
     ) -> bool:
+        # ---- Self-corr risk guard ----
+        # Reject high-risk candidates before they enter the pipeline.
+        # This prevents WQ quota waste on structurally autocorrelated alphas.
+        risk = estimate_self_corr_risk(expr)
+        max_risk = float(os.getenv("GEN_MAX_SELF_CORR_RISK", "0.80"))
+        if risk > max_risk:
+            return False
+
         h = self._hash(expr)
         if h not in self._seen:
             self._seen.add(h)
@@ -297,6 +318,80 @@ class AlphaGenerator:
                 delattr(self, "_current_hypothesis")
         return results
 
+    def generate_hybrid_hypothesis(
+        self,
+        n: int = 50,
+        use_rag: bool = True,
+        acceptance_rates: Dict[str, float] | None = None,
+    ) -> List[AlphaCandidate]:
+        """
+        Hypothesis-led generator that keeps multiple strategy arms alive.
+
+        Pure hypothesis mode is useful for controlled experiments, but it can
+        collapse exploration. This mode keeps a dominant hypothesis slice while
+        reserving simulation budget for composite, group-aware, template, and
+        seed/LLM variants so the allocator can learn which arms produce quality.
+        """
+        if acceptance_rates:
+            self.update_arm_weights(acceptance_rates)
+        target = max(1, int(n))
+        results: List[AlphaCandidate] = []
+        result_hashes: Set[str] = set()
+
+        def add_many(candidates: List[AlphaCandidate]) -> None:
+            for cand in candidates:
+                if len(results) >= target:
+                    return
+                h = self._hash(cand.expression)
+                if h in result_hashes:
+                    continue
+                result_hashes.add(h)
+                results.append(cand)
+
+        llm_ratio = 0.0
+        if use_rag and getattr(self, "rag_mutator", None):
+            llm_ratio = compute_llm_budget_ratio(
+                baseline_ratio=float(os.getenv("ASYNC_HYBRID_RAG_RATIO", "0.08")),
+                llm_error_rate=float(getattr(self.rag_mutator, "last_error_rate", 0.0) or 0.0),
+                submit_fail_rate=float(getattr(self, "runtime_submit_fail_rate", 0.0) or 0.0),
+                has_llm=bool(getattr(self.rag_mutator, "api_key", "") or getattr(self.rag_mutator, "ollama_base", "")),
+            )
+
+        n_rag = int(target * llm_ratio)
+        if n_rag > 0:
+            try:
+                add_many(self.rag_mutator.generate_f1_alphas(batch_size=n_rag))
+            except Exception:
+                pass
+
+        remaining = max(0, target - len(results))
+        n_hyp = max(1, int(remaining * float(os.getenv("ASYNC_HYBRID_HYPOTHESIS_RATIO", "0.45"))))
+        n_comp = max(1, int(remaining * 0.15))
+        n_group = max(1, int(remaining * 0.15))
+        n_theme = max(1, int(remaining * 0.15))
+        n_mut = max(1, int(remaining * 0.05))
+        n_seed = max(0, remaining - n_hyp - n_comp - n_group - n_theme - n_mut)
+
+        add_many(self.generate_hypothesis_driven(n_hyp))
+        add_many(self.generate_composites(n_comp))
+        add_many(self.generate_group_aware(n_group))
+        add_many(self.generate_from_themes(n_theme))
+        add_many(self.generate_mutations(n_mut))
+
+        for seed in get_random_seeds(max(1, n_seed * 2)):
+            if len(results) >= target:
+                break
+            if self._add_if_new(seed, results, theme="seed", mutation_type="raw_seed"):
+                result_hashes.add(self._hash(seed))
+
+        attempts = 0
+        while len(results) < target and attempts < target * 4:
+            attempts += 1
+            add_many(self.generate_hypothesis_driven(1))
+
+        random.shuffle(results)
+        return results[:target]
+
     # =========================================================
     # Strategy 1: Theme-Driven Hypothesis Generator
     # Mỗi theme có financial rationale rõ ràng → pass rate cao hơn
@@ -326,6 +421,15 @@ class AlphaGenerator:
             ("quality", lambda: f"group_rank(rank(ts_mean(returns, {self._get_biased_lookback('short')}) / (ts_std_dev(returns, {self._get_biased_lookback('mid')}) + 0.001)), 1, subindustry)"),
             ("quality", lambda: f"-rank(ts_skewness(returns, {self._get_biased_lookback('long')})) * rank(return_equity)"),
 
+            # --- Mean Reversion Advanced (Top Performers) ---
+            ("mean_reversion_advanced", lambda: f"group_neutralize(ts_decay_linear((rank(days_from_last_change(close)) * -rank(ts_delta(close, {self._get_biased_lookback('short')}))), subindustry)"),
+            ("mean_reversion_advanced", lambda: f"group_neutralize(ts_rank(rank(days_from_last_change(close)) * -returns, {self._get_biased_lookback('mid')}), industry)"),
+            ("mean_reversion_advanced", lambda: f"-rank(ts_decay_linear(days_from_last_change(returns > 0), 5)) * rank(returns)"),
+
+            # --- LIQUIDITY (Top Performers) ---
+            ("liquidity", lambda: f"group_neutralize(ts_decay_linear(-(rank(returns / (volume / adv20 + 0.001)) * rank(close)), 10), subindustry)"),
+            ("liquidity", lambda: f"rank(volume / adv20) * -rank(abs(returns) / (ts_std_dev(returns, 20) + 0.001))"),
+            ("liquidity_impact", lambda: f"group_neutralize(rank(ts_delta(close, 1) / (volume / adv20 + 0.001)), industry)"),
             # --- IQC STRATEGIST LAYER: Price Shock (Mean Reversion) ---
             ("price_shock", lambda: f"-rank(ts_decay_linear(abs(returns), {self._get_biased_lookback('short')})) * rank(ts_delta(close, {self._get_biased_lookback('short')}))"),
             ("price_shock", lambda: f"group_neutralize(rank(ts_sum(returns, {self._get_biased_lookback('short')}) / ts_std_dev(close, {self._get_biased_lookback('mid')})), subindustry)"),
@@ -343,12 +447,11 @@ class AlphaGenerator:
 
             # --- CROSS-SECTIONAL (Orthogonalized Momentum) ---
             ("cross_sectional", lambda: f"group_neutralize(rank(returns - group_mean(returns, 1, {random.choice(GROUPS)})), subindustry)"),
-            ("cross_sectional", lambda: f"group_neutralize(rank(ts_decay_linear(returns, {self._get_biased_lookback('mid')})), {random.choice(['sector','industry'])})"),
-            ("cross_sectional", lambda: f"group_rank(rank(ts_mean(returns, {self._get_biased_lookback('long')})), 1, {random.choice(['sector','industry'])})"),
-            ("cross_sectional", lambda: f"-rank(ts_corr(returns, group_mean(returns, 1, {random.choice(['sector','industry'])}), {self._get_biased_lookback('mid')}))"),
-            ("cross_sectional", lambda: f"group_neutralize(rank(ts_delta(close, {self._get_biased_lookback('mid')})), {random.choice(['sector','industry'])})"),
-            ("cross_sectional", lambda: f"group_neutralize(rank(volume / adv20), {random.choice(['sector','industry'])})"),
-            ("cross_sectional", lambda: f"rank(close / vwap) - group_mean(rank(close / vwap), 1, {random.choice(['sector','industry'])})"),
+            ("cross_sectional", lambda: f"group_neutralize(rank(ts_decay_linear(returns, 5)) - rank(group_mean(returns, 1, {random.choice(GROUPS)})), subindustry)"),
+            ("cross_sectional", lambda: f"group_neutralize(rank(ts_delta(close, 5)) * -rank(returns / (adv20 + 1)), subindustry)"),
+            ("cross_sectional", lambda: f"group_neutralize(rank(returns) * rank(volume / adv20), subindustry)"),
+            ("microstructure", lambda: f"group_neutralize(ts_decay_linear(rank(returns) * rank(ts_delta(volume, 1)), 5), industry)"),
+            ("microstructure", lambda: f"rank(ts_rank(returns, 10)) * -rank(ts_delta(close, 1))"),
 
             # --- REGIME & FUNDAMENTALS ---
             ("regime", lambda: f"group_neutralize(rank(ts_std_dev(returns, {self._get_biased_lookback('short')})) * (-rank(ts_delta(close, {self._get_biased_lookback('short')}))), subindustry)"),
@@ -499,7 +602,7 @@ class AlphaGenerator:
         """
         patterns = [
             lambda p, d, g: f"group_neutralize(rank(ts_delta({p}, {d})), {g})",
-            lambda p, d, g: f"group_neutralize(rank(ts_mean({p}, {d})), {g})",
+            lambda p, d, g: f"group_neutralize(rank(ts_corr(returns, {p}, {d})), {g})",
             lambda p, d, g: f"group_neutralize(rank({p} / ts_mean({p}, {d})), {g})",
             lambda p, d, g: f"group_neutralize(-rank(ts_std_dev({p}, {d})), {g})",
             lambda p, d, g: f"group_rank(rank(ts_delta({p}, {d})), 1, {g})",
@@ -508,7 +611,7 @@ class AlphaGenerator:
             lambda p, d, g: f"rank(ts_mean(returns, {d})) - group_mean(rank(ts_mean(returns, {d})), 1, {g})",
             lambda p, d, g: f"-rank(ts_corr(returns, group_mean(returns, 1, {g}), {d}))",
             lambda p, d, g: f"group_neutralize(rank(volume / adv20), {g})",
-            lambda p, d, g: f"group_neutralize(rank(ts_corr({p}, volume, {d})), {g})",
+            lambda p, d, g: f"group_neutralize(rank(ts_corr(returns, {p}, {d})), {g})",
             lambda p, d, g: f"group_neutralize(rank(ts_mean(returns, {d}) / (ts_std_dev(returns, {d}) + 0.001)), {g})",
         ]
 
@@ -664,6 +767,8 @@ class AlphaGenerator:
         """
         if self.generation_mode == "hypothesis_driven":
             return self.generate_hypothesis_driven(n=n)
+        if self.generation_mode in ("hybrid_hypothesis", "hypothesis_hybrid", "sharpe_hybrid", "llm_rag"):
+            return self.generate_hybrid_hypothesis(n=n, use_rag=use_rag)
 
         results = []
         
@@ -673,7 +778,7 @@ class AlphaGenerator:
                 baseline_ratio=0.10,
                 llm_error_rate=float(getattr(self.rag_mutator, "last_error_rate", 0.0) or 0.0),
                 submit_fail_rate=float(getattr(self, "runtime_submit_fail_rate", 0.0) or 0.0),
-                has_api_key=bool(getattr(self.rag_mutator, "api_key", "")),
+                has_llm=bool(getattr(self.rag_mutator, "api_key", "") or getattr(self.rag_mutator, "ollama_base", "")),
             )
 
         # 1. RAG Mutation (budget-controlled)
@@ -711,6 +816,120 @@ class AlphaGenerator:
                 self._add_if_new(seed, results, theme="seed", mutation_type="raw_seed")
             if len(results) >= n:
                 break
+
+        random.shuffle(results)
+        return results[:n]
+
+    def generate_batch_adaptive(
+        self,
+        n: int = 50,
+        acceptance_rates: Dict[str, float] | None = None,
+    ) -> List[AlphaCandidate]:
+        """
+        Arm-weighted batch generation: arms with high WQ acceptance rates
+        receive proportionally more of the generation budget.
+
+        Internally calls update_arm_weights(), then distributes generation
+        quota proportional to the adaptive arm weights derived from
+        acceptance_rates.
+
+        Args:
+            n: Total candidates to generate.
+            acceptance_rates: dict[arm_name] -> Bayesian-smoothed P(accept | submitted).
+
+        Returns:
+            List of AlphaCandidate, composition biased toward high-p_accept arms.
+        """
+        self.update_arm_weights(acceptance_rates or {})
+        arm_weights = self._arm_weights
+
+        if not arm_weights:
+            return self.generate_batch(n=n, use_rag=False)
+
+        # Map arms → theme slices
+        arm_theme_map: Dict[str, List[str]] = {
+            "llm":           [],                   # filled via RAG
+            "evolved":       ["regime"],
+            "harvested":     ["arxiv", "smc", "community", "arxiv_elite"],
+            "rareop":        ["level5_intuition"],
+            "seeded":        ["seed"],
+            "deterministic": [
+                "microstructure", "quality", "cross_sectional",
+                "fundamental", "behavioural",
+                "mean_reversion_advanced", "liquidity", "price_shock",
+                "volume_anomaly", "vol_compression",
+                "stat_arb", "signal_processing",
+                "advanced_ops",
+            ],
+        }
+
+        # Normalise weights to a 0-1 scale for distribution
+        total_w = sum(arm_weights.values())
+        if total_w <= 0:
+            return self.generate_batch(n=n, use_rag=False)
+        norm = {arm: w / total_w for arm, w in arm_weights.items()}
+
+        # RAG arm gets a fixed slice of LLM budget; the rest fills with themes
+        rag_ratio = compute_arm_budget_ratio(
+            acceptance_rate=arm_weights.get("llm", 0.5),
+            baseline_ratio=0.10,
+        )
+        n_rag = int(n * rag_ratio)
+
+        results: List[AlphaCandidate] = []
+        result_hashes: Set[str] = set()
+
+        def add_many(candidates: List[AlphaCandidate]) -> None:
+            for cand in candidates:
+                if len(results) >= n:
+                    return
+                h = self._hash(cand.expression)
+                if h in result_hashes:
+                    continue
+                result_hashes.add(h)
+                results.append(cand)
+
+        if n_rag > 0 and self.rag_mutator:
+            try:
+                add_many(self.rag_mutator.generate_f1_alphas(batch_size=n_rag))
+            except Exception:
+                pass
+
+        remaining = max(0, n - len(results))
+
+        # Distribute remaining quota across the other 5 arms
+        arm_list = [a for a in arm_theme_map if a != "llm"]
+        for arm in arm_list:
+            if len(results) >= n:
+                break
+            share = int(round(remaining * norm.get(arm, 0.0)))
+            if share <= 0:
+                continue
+            themes = arm_theme_map[arm]
+            if arm == "evolved":
+                add_many(self.generate_from_seed_mutations(
+                    get_random_seeds(1)[0], n=share, parent_theme="evolve"
+                ))
+            elif arm == "harvested":
+                add_many(self.generate_from_themes(n=share))
+            elif arm == "rareop":
+                add_many(self.generate_level5_intuition(n=share))
+            elif arm == "seeded":
+                for seed in get_random_seeds(max(1, share)):
+                    if len(results) >= n:
+                        break
+                    if self._add_if_new(seed, results, theme="seed", mutation_type="raw_seed"):
+                        result_hashes.add(self._hash(seed))
+            else:  # deterministic fallback
+                add_many(self.generate_from_themes(n=share))
+
+        # Seed sampling to top up
+        seeds = get_random_seeds(max(1, (n - len(results)) * 2))
+        for seed in seeds:
+            if len(results) >= n:
+                break
+            if self._add_if_new(seed, results, theme="seed", mutation_type="raw_seed"):
+                result_hashes.add(self._hash(seed))
 
         random.shuffle(results)
         return results[:n]

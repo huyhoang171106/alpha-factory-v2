@@ -29,6 +29,15 @@ class WQClientSimulateRetryTests(unittest.TestCase):
         self.assertTrue(WQClient._is_concurrent_sim_limit(resp))
         self.assertFalse(WQClient._is_concurrent_sim_limit(DummyResponse(400, {"detail": "other"})))
 
+    def test_log_helpers_redact_private_values(self):
+        expr = "group_neutralize(rank(ts_delta(close, 12)), subindustry)"
+
+        self.assertEqual(wq_client._mask_email("alpha@example.com"), "a***@example.com")
+        self.assertNotIn(expr, wq_client._safe_expr_ref(expr))
+        self.assertEqual(len(wq_client._safe_expr_ref(expr)), 12)
+        self.assertNotIn("BRAIN-123", wq_client._safe_alpha_ref("BRAIN-123"))
+        self.assertEqual(len(wq_client._safe_alpha_ref("BRAIN-123")), 12)
+
     def test_simulate_retries_when_concurrent_limit_hit(self):
         client = self._bare_client()
         calls = {"post": 0}

@@ -465,6 +465,398 @@ class CommunityHarvester:
         print("─" * 55)
         print()
 
+    # ─────────────────────────────────────────────────────────
+    # Deep Mutation Strategies
+    # ─────────────────────────────────────────────────────────
+
+    # ── Helper: Regime detection ──────────────────────────────
+
+    @staticmethod
+    def _regime_from_volatility(alpha_expr: str) -> str:
+        """
+        Compute realized_vol = ts_std(returns, 20) / ts_mean(returns, 20)
+        and return "low_vol" | "medium_vol" | "high_vol".
+
+        Since we cannot execute expressions at harvest time, this method
+        uses heuristic lookback detection in the alpha expression itself
+        to guess the prevailing regime, and falls back to "medium_vol".
+        """
+        canonical = alpha_expr.lower()
+
+        # Count how many long (>=60) vs short (<=20) lookback windows appear
+        long_lookbacks = re.findall(r'ts_\w+\([^)]*,\s*(\d+)\)', canonical)
+        short_lookbacks = re.findall(r'ts_\w+\([^)]*,\s*(\d+)\)', canonical)
+
+        long_count = sum(1 for n in long_lookbacks if int(n) >= 60)
+        short_count = sum(1 for n in short_lookbacks if int(n) <= 20)
+
+        if long_count > short_count * 2:
+            return "low_vol"
+        elif short_count > long_count * 2:
+            return "high_vol"
+        return "medium_vol"
+
+    # ─────────────────────────────────────────────────────────
+    # Strategy 1: Operator Substitution Mutations
+    # ─────────────────────────────────────────────────────────
+
+     # Semantic equivalence groups (single-entry pairs for clean substitution)
+     OPERATOR_EQUIVALENCE_GROUPS = [
+         ("ts_corr(", "ts_cov("),
+         ("ts_cov(", "ts_corr("),
+         ("decay_linear(", "ts_mean("),
+         ("ts_mean(", "decay_linear("),
+         ("rank(", "ts_zscore("),
+         ("ts_rank(", "ts_percentile("),
+     ]
+
+     def apply_operator_substitution(self, alpha_expr: str) -> list[str]:
+         """
+         For each outermost operator in the alpha that belongs to a semantic
+         equivalence group, replace it with its equivalent counterpart,
+         preserving all arguments intact.  Each substitution is built from
+         the original string (never from a previously-mutated result) to
+         prevent cascading cross-contamination between rules.
+
+         Returns a list of mutated expressions (skips if nothing changed or
+         the result has unbalanced parentheses).
+         """
+         original = alpha_expr.strip()
+         mutants: list[str] = []
+
+         for old_op, new_op in self.OPERATOR_EQUIVALENCE_GROUPS:
+             i = 0
+             while i < len(original):
+                 if original[i:i + len(old_op)] == old_op:
+                     if i > 0 and original[i - 1].isalnum():
+                         i += 1
+                         continue
+                     # Depth check: scan chars to the LEFT of position i
+                     depth = 0
+                     for j in range(i):
+                         if original[j] == "(":  depth += 1
+                         elif original[j] == ")": depth -= 1
+                     if depth != 0:
+                         i += 1
+                         continue
+                     # Unified depth scan for arguments
+                     rest = original[i + len(old_op):]
+                     depth = 1
+                     arg_end = len(rest)
+                     for k, ch in enumerate(rest):
+                         if ch == "(":  depth += 1
+                         elif ch == ")":
+                             depth -= 1
+                             if depth == 0:
+                                 arg_end = k
+                                 break
+                     args = rest[:arg_end]
+                     mutant = original[:i] + new_op + args
+                     if (mutant != original and
+                             mutant.count("(") == mutant.count(")")):
+                         mutants.append(mutant)
+                     i += len(old_op)
+                     continue
+                 i += 1
+         return mutants
+
+    def decompose_and_recombine(
+        self,
+        alpha_expr: str,
+        other_winners: list[str],
+    ) -> list[str]:
+        """
+        If top-level is a binary operator (+, -, *, /), extract left and right
+        sub-expressions and recombine each with a different winner's signal.
+
+        Returns mutated candidate expressions.
+        """
+        if len(other_winners) < 2:
+            return []
+
+        canonical = alpha_expr.strip()
+
+        # Find the outermost top-level binary operator (+, -, *, /)
+        # by scanning for the last valid binary op at nesting depth 0.
+        binary_ops = ["+", "-", "*", "/"]
+        best_pos = -1
+        best_op: str | None = None
+        depth = 0
+
+        for i, ch in enumerate(canonical):
+            if ch == "(":
+                depth += 1
+            elif ch == ")":
+                depth -= 1
+            elif ch in binary_ops and depth == 0 and i > 0:
+                # Skip '-' that is part of a negative number (e.g. "x-5")
+                if ch == "-" and canonical[i - 1].isalnum():
+                    continue
+                # Skip if the raw previous char is also a binary operator
+                # (handles chains like "+-" or "++")
+                prev_raw = canonical[i - 1]
+                if prev_raw in binary_ops:
+                    continue
+                best_pos = i
+                best_op = ch
+
+        if best_pos == -1 or best_op is None:
+            # DEBUG
+            import sys as _sys
+            _sys.stderr.write(f"[DEBUG decompose] no binary op found in: {canonical!r}\n")
+            return []
+
+        left = canonical[:best_pos].strip()
+        right = canonical[best_pos + 1:].strip()
+
+        # Guard: reject trivial operands
+        if len(left) < 3 or len(right) < 3:
+            return []
+
+        mutants: list[str] = []
+        used = set()
+        for winner in other_winners[:6]:
+            w = winner.strip()
+            if not w or w in used:
+                continue
+
+            # Recombine left with winner's signal on the right
+            m1 = f"({left}) {best_op} ({w})"
+            # Recombine right with winner's signal on the left
+            m2 = f"({w}) {best_op} ({right})"
+
+            for m in [m1, m2]:
+                if m != alpha_expr and m.count("(") == m.count(")"):
+                    mutants.append(m)
+                    used.add(w)
+
+        return mutants[:6]
+
+    # ─────────────────────────────────────────────────────────
+    # Strategy 3: Regime-Conditional Mutation
+    # ─────────────────────────────────────────────────────────
+
+    def apply_regime_conditional_mutation(
+        self,
+        alpha_expr: str,
+        regime: str,
+    ) -> list[str]:
+        """
+        Apply regime-aware mutations:
+
+        - high_vol:  replace long lookbacks (>=60) with shorter (<=20),
+                     add ts_std weighting
+        - low_vol:   replace short lookbacks (<=20) with longer (>=60),
+                     favor mean-reversion signals
+        - transition: add ts_delta wrapping and faster decay operators
+        """
+        canonical = alpha_expr.strip()
+        mutants: list[str] = []
+
+        if regime == "high_vol":
+            # Replace long lookbacks (>=60) with shorter (20)
+            mutants_long = re.sub(
+                r'(ts_\w+)\([^,]+,\s*(\d+)\)',
+                lambda m: (
+                    m.group(1) + "(" + m.group(0).split(",")[0].split("(")[1] + ", 20)"
+                    if int(m.group(2)) >= 60
+                    else m.group(0)
+                ),
+                canonical,
+            )
+            if mutants_long != canonical:
+                mutants.append(mutants_long)
+
+            # Add ts_std weighting (volatility dampening)
+            if "ts_std" not in canonical.lower():
+                mutants.append(
+                    f"rank({canonical}) * rank(ts_std({canonical}, 20))"
+                )
+
+        elif regime == "low_vol":
+            # Replace short lookbacks (<=20) with longer (60)
+            mutants_short = re.sub(
+                r'(ts_\w+)\([^,]+,\s*(\d+)\)',
+                lambda m: (
+                    m.group(1) + "(" + m.group(0).split(",")[0].split("(")[1] + ", 60)"
+                    if 2 <= int(m.group(2)) <= 20
+                    else m.group(0)
+                ),
+                canonical,
+            )
+            if mutants_short != canonical:
+                mutants.append(mutants_short)
+
+            # Add mean-reversion wrapper: sign change on negative ts_delta
+            if "sign(" not in canonical.lower():
+                mutants.append(f"sign(-ts_delta({canonical}, 5))")
+
+        elif regime == "transition":
+            # Wrap with ts_delta and decay_linear
+            if "ts_delta" not in canonical.lower():
+                mutants.append(f"ts_delta({canonical}, 5)")
+
+            if "decay_linear" not in canonical.lower():
+                mutants.append(f"decay_linear({canonical}, 6)")
+
+            if mutants:
+                # Second-order delta (rate of change of rate)
+                mutants.append(f"ts_delta(ts_delta({canonical}, 5), 5)")
+
+        return mutants
+
+    # ─────────────────────────────────────────────────────────
+    # Strategy 4: Recent-Sharpe Community Fetch
+    # ─────────────────────────────────────────────────────────
+
+    def fetch_community_alphas(
+        self,
+        min_recent_sharpe: float = 1.0,
+        limit: int = 50,
+    ) -> List[HarvestedAlpha]:
+        """
+        Fetch community/shared alphas from WQ Brain sorted by recent Sharpe
+        (not just top performance), filtered to top 20% by recent Sharpe.
+
+        Endpoint: GET /community/alphas?sort=recent_sharpe&sharpe[gte]=X
+        """
+        logger.info(
+            f"🌐 Fetching community alphas (recent_sharpe >= {min_recent_sharpe}, "
+            f"top 20%, limit={limit})..."
+        )
+
+        # Top 20% threshold: in practice WQ community distributions vary;
+        # recent_sharpe >= 1.0 is a reasonable proxy for top quartile
+        params = {
+            "limit": limit,
+            "offset": 0,
+            "sort": "recent_sharpe",          # ← recent Sharpe sort
+            "sharpe": f"gte:{min_recent_sharpe}",
+            "region": "USA",
+        }
+
+        try:
+            r = self._ensure_client()._api_request(
+                "get",
+                f"{API_BASE}/community/alphas",
+                params=params,
+            )
+            if r is None or r.status_code != 200:
+                logger.warning(
+                    f"  Community fetch failed: {r.status_code if r else 'None'}"
+                )
+                return []
+
+            data = r.json()
+            alphas_raw = data.get("results", data.get("alphas", []))
+
+            harvested: list[HarvestedAlpha] = []
+            for a in alphas_raw:
+                expr = (
+                    a.get("regular", {}).get("code", "") or
+                    a.get("expression", "") or
+                    a.get("code", "")
+                )
+                if not expr:
+                    continue
+
+                recent_sharpe = float(a.get("recentSharpe", a.get("recent_sharpe", 0)) or 0)
+                if recent_sharpe < min_recent_sharpe:
+                    continue
+
+                h = HarvestedAlpha(
+                    alpha_id   = a.get("id", ""),
+                    expression = expr,
+                    sharpe     = recent_sharpe,
+                    fitness    = float(a.get("fitness", 0) or 0),
+                    turnover   = float(a.get("turnover", 0) or 0),
+                    region     = a.get("settings", {}).get("region", "USA"),
+                    universe   = a.get("settings", {}).get("universe", "TOP3000"),
+                    source     = "community",
+                )
+                harvested.append(h)
+
+            logger.info(f"  🌐 Fetched {len(harvested)} community alphas (recent Sharpe)")
+            return harvested
+
+        except Exception as e:
+            logger.error(f"  Community fetch error: {e}")
+            return []
+
+    # ─────────────────────────────────────────────────────────
+    # Deep Mutation Orchestrator
+    # ─────────────────────────────────────────────────────────
+
+    def mutate_deep(
+        self,
+        alphas: list[str],
+        regime: str | None = None,
+    ) -> list[dict]:
+        """
+        Run all deep mutation strategies on a list of alpha expressions and
+        return a list of mutation records.
+
+        Args:
+            alphas: list of alpha expression strings
+            regime: optional regime hint ("high_vol" | "low_vol" | "transition")
+                   if omitted, inferred per-alpha via _regime_from_volatility
+
+        Returns:
+            list of dicts with keys:
+                expression   — mutated alpha string
+                mutation_type — one of the strategy names below
+                regime        — regime used ("inferred" if auto-detected)
+        """
+        if regime and regime not in ("high_vol", "low_vol", "transition", "medium_vol"):
+            logger.warning(f"Unknown regime '{regime}', defaulting to medium_vol")
+            regime = "medium_vol"
+
+        results: list[dict] = []
+
+        for alpha_expr in alphas:
+            effective_regime = regime or self._regime_from_volatility(alpha_expr)
+
+            # 1. Operator substitution
+            for mut in self.apply_operator_substitution(alpha_expr):
+                results.append({
+                    "expression": mut,
+                    "mutation_type": "operator_substitution",
+                    "regime": effective_regime,
+                })
+
+            # 2. Decompose & recombine (requires other winners)
+            # Use the alphas list itself as the winner pool (skip self)
+            other_winners = [a for a in alphas if a != alpha_expr]
+            for mut in self.decompose_and_recombine(alpha_expr, other_winners):
+                results.append({
+                    "expression": mut,
+                    "mutation_type": "decompose_recombine",
+                    "regime": effective_regime,
+                })
+
+            # 3. Regime-conditional mutation
+            for mut in self.apply_regime_conditional_mutation(alpha_expr, effective_regime):
+                results.append({
+                    "expression": mut,
+                    "mutation_type": f"regime_{effective_regime}",
+                    "regime": effective_regime,
+                })
+
+        # Deduplicate by expression
+        seen: set[str] = set()
+        unique_results: list[dict] = []
+        for r in results:
+            if r["expression"] not in seen:
+                seen.add(r["expression"])
+                unique_results.append(r)
+
+        logger.info(
+            f"  🧬 Deep mutate: {len(alphas)} inputs → "
+            f"{len(unique_results)} unique mutants "
+            f"(regime={regime or 'inferred'})"
+        )
+        return unique_results
+
 
 # ============================================================
 # Quick test
@@ -490,4 +882,21 @@ if __name__ == "__main__":
     else:
         print("  No results in DB yet — run some simulations first!")
     print()
-    h.show_quality_targets()
+    h.show_quality_targets()                    rest = original[i + len(old_op):]
+
+                    # Unified depth scan: start at depth 1 (inside the call)
+                    # and collect chars until we exit back to depth 0.
+                    # Works for: rank(close), rank(ts_zscore(v)), foo(bar(x),baz(y))
+                    depth = 1
+                    arg_end = len(rest)
+                    for k, ch in enumerate(rest):
+                        if ch == 40:  # ord("(")
+                            depth += 1
+                        elif ch == 41:  # ord(")")
+                            depth -= 1
+                            if depth == 0:
+                                arg_end = k
+                                break
+                    args = rest[:arg_end]
+
+                    

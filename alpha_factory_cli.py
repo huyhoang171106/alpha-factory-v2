@@ -57,7 +57,7 @@ PROFILE_DEFAULTS = {
         "WQ_MAX_WAIT_TIME": "600",
         "WQ_SIM_SUBMIT_RETRIES": "3",
         "WQ_SIM_SUBMIT_BACKOFF": "8",
-        "GENERATOR_MODE": "hypothesis_driven",
+        "GENERATOR_MODE": "hybrid_hypothesis",
     },
     "vps": {
         "ASYNC_RANKER_WORKERS": "3",
@@ -199,6 +199,19 @@ def _profile_env(profile: str) -> dict[str, str]:
     merged = {}
     for key, value in defaults.items():
         merged[key] = os.getenv(key, value)
+
+    # Safety Hardening for Local Profile
+    if profile == "local" and os.getenv("ALPHA_ALLOW_UNSAFE_PACING") != "1":
+        sim_workers = int(merged.get("ASYNC_SIMULATOR_WORKERS", "1"))
+        if sim_workers > 1:
+            print(f"[safety] local profile: capping ASYNC_SIMULATOR_WORKERS=1 (current={sim_workers}). Set ALPHA_ALLOW_UNSAFE_PACING=1 to override.")
+            merged["ASYNC_SIMULATOR_WORKERS"] = "1"
+
+        max_concurrent = int(merged.get("WQ_MAX_CONCURRENT", "1"))
+        if max_concurrent > 2:
+            print(f"[safety] local profile: capping WQ_MAX_CONCURRENT=2 (current={max_concurrent}) for stability.")
+            merged["WQ_MAX_CONCURRENT"] = "2"
+
     return merged
 
 
@@ -511,6 +524,71 @@ def run_ab_safe(
     return 0
 
 
+def run_ab_rag(
+    profile: str,
+    score: float,
+    minutes_per_leg: int,
+    out_path: str,
+) -> int:
+    """
+    Automated A/B test: Normal (RAG=0) vs RAG (RAG=1).
+    """
+    report = {
+        "generated_at": datetime.utcnow().replace(microsecond=0).isoformat() + "Z",
+        "mode": "ab_rag_comparison",
+        "profile": profile,
+        "minutes_per_leg": minutes_per_leg,
+        "legs": [],
+    }
+
+    # Leg A: Normal (RAG=0)
+    print(f"\n[ab-rag] starting Leg A: Normal (RAG=0) - {minutes_per_leg} mins")
+    run_id_a = f"ab_normal_{int(time.time())}"
+    leg_a = _run_timed_async_leg(
+        profile=profile,
+        score=score,
+        minutes=minutes_per_leg,
+        env_overrides={"ASYNC_USE_RAG": "0", "RUN_ID": run_id_a},
+    )
+    leg_a["label"] = "Normal"
+    leg_a["run_id"] = run_id_a
+    report["legs"].append(leg_a)
+
+    # Leg B: RAG (RAG=1)
+    print(f"\n[ab-rag] starting Leg B: RAG (RAG=1) - {minutes_per_leg} mins")
+    run_id_b = f"ab_rag_{int(time.time())}"
+    leg_b = _run_timed_async_leg(
+        profile=profile,
+        score=score,
+        minutes=minutes_per_leg,
+        env_overrides={"ASYNC_USE_RAG": "1", "RUN_ID": run_id_b},
+    )
+    leg_b["label"] = "RAG"
+    leg_b["run_id"] = run_id_b
+    report["legs"].append(leg_b)
+
+    out = Path(out_path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(report, ensure_ascii=True, indent=2), encoding="utf-8")
+    print(f"\n[ok] ab-rag report generated: {out}")
+
+    # Preliminary command-line analysis
+    print("\n" + "="*40)
+    print("      A/B COMPARISON PREVIEW")
+    print("="*40)
+    for leg in report["legs"]:
+        kpi = leg.get("kpi", {})
+        print(f"Leg {leg['label']} ({leg['run_id']}):")
+        print(f"  Simulated: {kpi.get('simulated', 0)}")
+        print(f"  Gated:     {kpi.get('gated', 0)} ({kpi.get('gate_pass_rate', 0.0):.1%})")
+        print(f"  Accepted:  {kpi.get('accepted', 0)}")
+    print("="*40)
+
+    # Suggest running the full comparison script
+    print(f"\n[hint] Run 'python compare_reports.py --a {run_id_a} --b {run_id_b}' for deep analysis.")
+    return 0
+
+
 def run_tests() -> int:
     py = _venv_python()
     if (ROOT / "tests").exists():
@@ -591,6 +669,13 @@ def parse_args() -> argparse.Namespace:
     p_ab.add_argument("--d1-share-b", type=float, default=0.75)
     p_ab.add_argument("--out", default="results/ab_safe_report.json")
     p_ab.add_argument("--skip-install", action="store_true")
+
+    p_rag = sub.add_parser("compare-rag", help="A/B test: Normal vs RAG generation")
+    p_rag.add_argument("--profile", choices=["local", "vps", "gha"], default="local")
+    p_rag.add_argument("--score", type=float, default=50.0)
+    p_rag.add_argument("--minutes-per-leg", type=int, default=180, help="minutes per leg (default 3h)")
+    p_rag.add_argument("--out", default="results/ab_rag_report.json")
+    p_rag.add_argument("--skip-install", action="store_true")
 
     p_tlog = sub.add_parser("thinking-log", help="append developer thinking log entry")
     p_tlog.add_argument("--title", default="Session Note")
@@ -687,6 +772,15 @@ def main() -> int:
                 cycles=args.cycles,
                 d1_share_a=args.d1_share_a,
                 d1_share_b=args.d1_share_b,
+                out_path=args.out,
+            )
+
+        if command == "compare-rag":
+            bootstrap(skip_install=args.skip_install)
+            return run_ab_rag(
+                profile=args.profile,
+                score=args.score,
+                minutes_per_leg=args.minutes_per_leg,
                 out_path=args.out,
             )
 

@@ -50,6 +50,59 @@ TIERS = {
     "bad":       {"sharpe": 0.0,  "fitness": 0.0},  # anything below minimum
 }
 
+# ── Default arm → strategy cluster weights (uniform start) ──
+DEFAULT_ARM_WEIGHTS: Dict[str, float] = {
+    "llm":          0.20,
+    "evolved":      0.20,
+    "harvested":    0.15,
+    "rareop":       0.15,
+    "seeded":       0.15,
+    "deterministic": 0.15,
+}
+PRIOR = 0.1   # Bayesian prior for acceptance rate smoothing
+
+
+# ============================================================
+# Adaptive Arm Weights — wired to WQ acceptance rates
+# ============================================================
+def get_adaptive_weights(
+    acceptance_rates: Dict[str, float],
+) -> Dict[str, float]:
+    """
+    Bias generator arm weights toward arms with high WQ acceptance rates.
+
+    Bayesian smoothing: effective_rate = (observed * resolved + prior * n)
+                        / (resolved + n)
+    Here `acceptance_rates` is assumed to already carry Bayesian smoothing
+    (i.e. computed as (accepted + 1) / (resolved + 2)), so no further prior
+    need be applied — the 0.4 floor in the formula already serves as the
+    cold-start anchor.
+
+    Formula: weight ∝ base_weight * (0.4 + 0.6 * smooth_accept_rate)
+
+    Args:
+        acceptance_rates: dict[arm_name] -> Bayesian-smoothed P(accept | submitted),
+                          e.g. from BudgetAllocator.arm_snapshot() or
+                          tracker.acceptance_rate_by_arm() with smoothing.
+
+    Returns:
+        dict[arm_name] -> float, all normalized to sum to 1.0.
+        Arms not in acceptance_rates keep their DEFAULT_ARM_WEIGHTS share.
+    """
+    if not acceptance_rates:
+        return dict(DEFAULT_ARM_WEIGHTS)
+
+    # Compute raw (unscaled) weights
+    raw: Dict[str, float] = {}
+    for arm, base in DEFAULT_ARM_WEIGHTS.items():
+        rate = acceptance_rates.get(arm, 0.5)   # 0.5 = cold-start prior
+        raw[arm] = base * (0.4 + 0.6 * rate)
+
+    total = sum(raw.values())
+    if total <= 0.0:
+        return dict(DEFAULT_ARM_WEIGHTS)
+    return {arm: w / total for arm, w in raw.items()}
+
 # ── Operators to track ───────────────────────────────────────
 TRACKED_OPERATORS = [
     "ts_corr", "ts_delta", "ts_mean", "ts_std_dev", "ts_rank",

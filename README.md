@@ -1,278 +1,114 @@
-# Alpha Factory
+# 🚀 Alpha Factory: High-Performance Research Engine
 
-Production-oriented alpha generation pipeline for WorldQuant Brain: continuous candidate generation, async simulation, resilient submit orchestration, post-submit review reconciliation, and quality-diversity search with budget economy.
+Production-grade alpha generation pipeline for WorldQuant Brain. Engineered for high-throughput discovery using **Async Streaming Architecture**, **Priority-Based Scheduling**, and **Quality-Diversity (QD) Evolution**.
 
 > **Security:** This is a private quantitative research repository. Never expose alpha expressions, alpha IDs, raw WQ API payloads, or credentials.
 
 ---
 
-## Architecture
+## 🏗️ Architecture: Async Streaming & Priority Search
 
-```
-Generator ──▶ Ranker ──▶ Simulator ──▶ Tier-1 Gate ──▶ Submit Queue ──▶ WQ Brain
-   │           │            │               │                │
-   ▼           ▼            ▼               ▼                ▼
- async       5-layer      WQ API        bias/IC/         SubmitGovernor
- producer    pre-filter    batch        quality          + DLQ + retry
- queue       (no cost)    simulation     gate (local)
-```
+The engine has shifted from naive batch processing to a **True Async Streaming** model with prioritized task execution.
 
-### Pipeline stages
+```mermaid
+graph TD
+    A[Producer: 5-Strategy Gen] -->|Expressions| B(Async Ranking Filter)
+    B -->|Score + Metadata| C{Priority Queue}
+    C -->|High Score First| D[Worker Pool: 10x Simulators]
+    D -->|Streaming Results| E[Tier-1 Robustness Gate]
+    E -->|Passed| F[Evolution Archive & Submit]
+    F -->|Review Status| G[WQ Brain Decision]
 
-| Stage | What it does |
-|-------|-------------|
-| **Generator** | Produces alpha expressions via 5 strategies: Theme-Driven, Template Mutation, Composite, Group-Aware, Seed-Based. Optionally RAG-augmented via LLM when `OPENROUTER_API_KEY` is set. |
-| **Ranker** | Fast 5-layer filter before simulation: duplicate signature → DB duplicate → collinearity → critic score → pre-ranker score (50+). Zero WQ API cost. |
-| **Simulator** | Calls `WQClient.simulate_batch()` — WQ Brain runs backtest, returns Sharpe, Fitness, Turnover, Sub-Sharpe, pass/fail checks. |
-| **Tier-1 Gate** | Local pre-submission check before submit queue — catches survivorship bias, lookahead bias, IC instability, and quality failures **without spending WQ quota**. |
-| **Submit Queue** | `SubmitGovernor` dispatches, retries by error class, dead-letters failed jobs, and reconciles `submitted → accepted/rejected` via review polling. |
-
-### Key files
-
-| File | Purpose |
-|------|---------|
-| `alpha_factory_cli.py` | Single entry CLI — setup, run, test, KPIs, reconciliation |
-| `run_async_pipeline.py` | Async streaming runtime (producer → ranker → simulator → gate → submit) |
-| `generator.py` | Alpha expression generator with 5 strategies + hypothesis-driven mode |
-| `alpha_ranker.py` | Pre-sim scoring: complexity penalty, structural patterns, XGBoost surrogate |
-| `alpha_policy.py` | Quality gates, Tier-1 bias detection, IC stability, pre-submission gate |
-| `wq_client.py` | WorldQuant Brain API client: auth, simulate, submit, status polling |
-| `submit_governor.py` | Submit queue, retry by error class, DLQ, reconciliation |
-| `tracker.py` | SQLite state machine, KPI queries, DLQ replay, CSV export |
-| `budget_allocator.py` | Tier-1 cheap gate + Tier-2 Thompson-sampling expected value |
-| `quality_diversity.py` | MAP-Elites-style QD archive with novelty scoring |
-
-### Submit lifecycle (state machine)
-
-```
-new → gated → queued → submitted → accepted|rejected
-                           ↓
-              failed → dead_lettered → replay → queued
+    subgraph "Local Research Loop"
+    B
+    C
+    D
+    E
+    end
 ```
 
-> **Critical semantic:** `submitted` (WQ API 2xx) ≠ `accepted` (WQ review decision). Always preserve this distinction. `accepted`/`rejected` are only set after review reconciliation polling.
+### ⚡ Pipeline Intelligence
+
+| Stage | Mechanism | Impact |
+|-------|-----------|--------|
+| **Generator** | **Advanced RAG & DNA Mutation** | Mutates "Elite Seeds" using quantitative hypotheses (e.g., Price Intensity, Illiquidity Clustering). |
+| **Ranker** | **Fast 5-Layer Filter** | Discards duplicates and low-potential alphas locally. Zero WQ API cost. |
+| **Priority Queue** | **`asyncio.PriorityQueue`** | High-potential alphas (`pre_rank` score) are simulated first, maximizing "Gold-to-Waste" ratio. |
+| **Simulator** | **Independent Workers** | 10 async workers processing individual alphas. **Staggered Start** prevents API burst limits. |
+| **Robustness Gate** | **Multi-Tier Policy** | Local checks for **Survivorship Bias**, **Lookahead Bias**, **IC Stability**, and **Drawdown Penalty**. |
+| **Evolution** | **MAP-Elites Archive** | Successful results update the DNA seed pool, creating a self-improving feedback loop. |
 
 ---
 
-## Setup
+## 🛠️ Setup & Operation
 
 ### 1. Bootstrap
-
 ```bash
 python alpha_factory_cli.py setup
 ```
+Installs dependencies into a local `.venv` and initializes the SQLite tracking DB.
 
-Creates `.venv`, installs all dependencies, seeds SQLite DB.
-
-### 2. Configure credentials
-
-```bash
-cp .env.example .env
-```
-
-Edit `.env` — required:
+### 2. Configure Credentials
+Edit `.env` (ensure `WQ_EMAIL` and `WQ_PASSWORD` are set).
+**Elite Mode Configuration:**
 ```env
-WQ_EMAIL=your_wq_email@example.com
-WQ_PASSWORD=your_wq_password
+ASYNC_SIMULATOR_WORKERS=10    # Max concurrency for WQ Brain
+ASYNC_BATCH_SIZE=1           # Enable streaming mode
+ASYNC_SIM_BATCH_TIMEOUT=400   # Handle complex alpha backtests
+WQ_POLL_INTERVAL=5           # Faster stage response detection
 ```
 
-Optional — enables RAG-augmented mutation in the generator:
-```env
-OPENROUTER_API_KEY=sk-or-...
-```
-
-### 3. Verify
-
+### 3. Execution (The "Auto" Mode)
+To start the high-throughput pipeline:
 ```bash
-# All 64 tests pass
-.venv\Scripts\python.exe -m pytest tests/ -q
-
-# Empty KPI report (zeros expected on fresh DB)
-python alpha_factory_cli.py kpi --minutes 60
+python alpha_factory_cli.py auto
 ```
+
+> [!IMPORTANT]
+> **Migration Note:** If you were previously running the Batch-based version, you MUST kill all zombie processes to clear the WQ simulation slots:
+> `taskkill /F /IM python.exe` (Windows)
 
 ---
 
-## Running
+## ⚖️ Quality Policy (Tier-1 Gate)
 
-### One-click profiles
+We simulate locally what WQ Brain checks in review to save time and quota.
 
-```bash
-# Local (Windows/mixed): hybrid supervisor + singleton lock
-python alpha_factory_cli.py auto --profile local
+### Robustness Checks
+- **IC Stability**: Checks if the performance ratio (Fitness/Sharpe) is consistent.
+- **Drawdown Guard**: Penalizes alphas with > 5% drawdown; rewards smooth return curves.
+- **Bias Detection**: RegEx-based detection for raw price leakage (Survivorship) and future data peeking (Lookahead).
+- **Sub-Universe Alignment**: Alphas must show robustness across diverse stock pools.
 
-# VPS (always-on server)
-python alpha_factory_cli.py auto --profile vps
-
-# GitHub Actions burst
-python alpha_factory_cli.py auto --profile gha
-```
-
-### Fine-grained control
-
-```bash
-python alpha_factory_cli.py async --limit 0 --score 50
-```
-
-| Argument | Meaning |
-|----------|---------|
-| `--limit N` | Max alphas to simulate. `0` = run forever. |
-| `--score N` | Pre-ranker threshold — expression must score ≥ N to enter simulation queue. Default: 50. |
-
-### Daily / batch mode
-
-```bash
-python alpha_factory_cli.py start
-```
+### Strategy Clusters
+1. **LLM/RAG**: Hypothesis-driven mutation of proven seeds.
+2. **Evolved**: Direct crossover and structural mutation of successful ancestors.
+3. **RareOps**: Exploration of high-complexity operators (Hump, Trade_When, etc.).
+4. **Deterministic**: Pattern-based discovery and template filling.
 
 ---
 
-## Key Environment Variables
-
-### Tier-1 Gate (pre-submission filtering)
-
-| Variable | Default | Effect |
-|----------|---------|--------|
-| `ASYNC_IC_STABILITY_MIN` | `0.15` | Minimum IC stability score. Alpha rejected if below — catches Sharpe/fitness gap, high turnover, weak sub-sharpe. |
-| `ASYNC_COMPLEXITY_MIN` | `0.55` | Minimum expression simplicity score (1.0 = simple/robust). Penalizes depth > 3, > 8 operators, > 5 unique lookback constants. |
-
-### Budget and simulation
-
-| Variable | Default | Effect |
-|----------|---------|--------|
-| `ASYNC_RANKER_WORKERS` | `2` | Concurrent ranker filter workers |
-| `ASYNC_SIMULATOR_WORKERS` | `1` | Concurrent simulator workers (WQ has global concurrency limit) |
-| `ASYNC_MIN_CRITIC_SCORE` | `0.38` | Minimum critic score to enter ranker |
-| `ASYNC_NOVELTY_MIN` | `0.28` | Minimum novelty score to pass Tier-1 budget gate |
-| `GENERATOR_MODE` | `hypothesis_driven` | `legacy` or `hypothesis_driven` — changes generation strategy mix |
-
-### Profiles apply different defaults — see `alpha_factory_cli.py` `PROFILE_DEFAULTS`.
-
----
-
-## Observability
+## 📊 Monitoring & Performance
 
 ### Live KPIs
-
+While the pipeline is running, use a second terminal:
 ```bash
 python alpha_factory_cli.py kpi --minutes 60
 ```
+- **`gate_pass_rate`**: Efficiency of the generator in creating robust alphas.
+- **`true_accept_rate`**: The ultimate metric — percentage of alphas accepted for payment.
 
-Primary metrics:
-
-| Metric | Meaning |
-|--------|---------|
-| `gate_pass_rate` | % generated alphas pass Tier-1 gate |
-| `submit_success_rate` | % queued → submitted (transport/API only) |
-| `submit_ok_rate` | % queued → submitted + accepted + rejected |
-| `true_accept_rate` | % accepted / all decided reviews |
-| `dlq_rate` | % dead-lettered / queued |
-
-### Monitor running pipeline
-
-While `auto --profile local` is running, each loop prints:
-
-```
-Gen: 142 | Filt: 38 | Sim: 12 | Passed: 7 | Q'd: 6 | Sub: 4 | 🚫GATE: 3 | Err: 1
-```
-
-| Field | Meaning |
-|-------|---------|
-| `Gen` | Total alphas generated |
-| `Filt` | Rejected by ranker (duplicate, collinear, low score) |
-| `Sim` | Sent to WQ simulation |
-| `Passed` | Passed Tier-1 gate + quality gate |
-| `Q'd` | Entered submit queue |
-| `Sub` | Submitted to WQ (API 2xx) |
-| `🚫GATE` | Rejected by Tier-1 gate (no quota spent) |
-| `Err` | Network error or timeout |
-
-### Review sync (reconcile WQ decisions)
-
-```bash
-# Pull latest accepted/rejected states from WQ
-python alpha_factory_cli.py sync-submit --limit 30
-```
-
-### Replay dead-lettered jobs
-
-```bash
-python alpha_factory_cli.py replay-dlq --limit 50
-```
-
-### Export public KPI report
-
-```bash
-python alpha_factory_cli.py public-report --minutes 60 --out results/public_report.json
-```
+### Troubleshooting
+- **Simulation Timeout**: If you see `⏰ Timeout`, check if the alpha is too complex or increase `ASYNC_SIM_BATCH_TIMEOUT`.
+- **Slot Full (429)**: The system automatically triggers a **60s Backoff** to let the WQ Brain API cool down.
 
 ---
 
-## Maintenance
-
-### Portable machine migration
-
+## 🧪 Testing
 ```bash
-python alpha_factory_cli.py zip          # bundle on source machine
-# copy zip to new machine, unzip
-python alpha_factory_cli.py setup       # bootstrap on new machine
-python alpha_factory_cli.py start        # run
-```
-
-### Windows autostart (Task Scheduler)
-
-```powershell
-# Install service-like autostart
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/install_windows_autostart.ps1
-
-# Remove
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/uninstall_windows_autostart.ps1
-```
-
-Logs: `results/windows_auto_runner.log`, `results/windows_auto_runner.err.log`
-
-### Global command (run from any directory)
-
-```bash
-python alpha_factory_cli.py install-global --name alpha
-alpha --help
-alpha --yolo   # one-click local hybrid run
-```
-
----
-
-## Testing
-
-```bash
-# Full suite (64 tests)
+# Run the full 60+ test suite
 .venv\Scripts\python.exe -m pytest tests/ -q
-
-# Specific module
-.venv\Scripts\python.exe -m pytest tests/test_alpha_policy.py -v
-
-# With coverage
-.venv\Scripts\python.exe -m pytest tests/ --cov=. --cov-report=term-missing
 ```
 
 ---
-
-## After Modifying Python Code
-
-Rebuild the graphify knowledge graph:
-
-```bash
-python -c "from graphify.watch import _rebuild_code; from pathlib import Path; _rebuild_code(Path('.'))"
-```
-
----
-
-## CI/CD
-
-GitHub Actions workflows in `.github/workflows/`:
-
-| Workflow | When | What |
-|----------|------|------|
-| `alpha-burst.yml` | Weekdays burst windows | Runs pipeline + syncs + publishes KPI artifact |
-| `nightly-health.yml` | Weekday nights | Unit tests + KPI snapshot |
-| `ci.yml` | Every push/PR | Unit tests + CLI smoke |
-| `security-audit.yml` | Weekly | Secrets scan, SAST, dependency audit, CodeQL |
+*Developed for elite quantitative research. Private & Confidential.*

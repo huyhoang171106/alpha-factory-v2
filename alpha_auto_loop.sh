@@ -12,6 +12,9 @@ MAX_CYCLES=0  # 0 = infinite
 LOG_FILE="logs/auto_loop_$(date +%Y%m%d).log"
 IMPROVE_SCRIPT="$SCRIPT_DIR/auto_improve.py"
 
+# RAG/LLM settings - set to 1 to enable RAG generation
+ASYNC_USE_RAG="${ASYNC_USE_RAG:-0}"
+
 mkdir -p logs
 
 log() {
@@ -42,6 +45,7 @@ if [ -z "$PYTHON" ] || [ ! -f "$PYTHON" ]; then
 fi
 
 log "Using Python: $PYTHON"
+log "RAG Enabled: $ASYNC_USE_RAG"
 
 # Check for auto_improve.py or create default improvement logic
 if [ ! -f "$IMPROVE_SCRIPT" ]; then
@@ -129,8 +133,8 @@ while true; do
     log "=== Starting cycle $cycle ==="
 
     # Run the auto command
-    log "Running: $PYTHON alpha_factory_cli.py auto --profile local"
-    "$PYTHON" alpha_factory_cli.py auto --profile local
+    log "Running: $PYTHON alpha_factory_cli.py auto --profile local (RAG=$ASYNC_USE_RAG)"
+    ASYNC_USE_RAG="$ASYNC_USE_RAG" "$PYTHON" alpha_factory_cli.py auto --profile local
 
     exit_code=$?
     log "Auto command exited with code: $exit_code"

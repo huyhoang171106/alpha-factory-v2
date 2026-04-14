@@ -22,10 +22,11 @@ class WQClientSubmissionTests(unittest.TestCase):
     def test_get_submission_decision_from_api_payload(self):
         client = object.__new__(WQClient)
         client._api_request = lambda method, url: DummyResponse(200, {"review": {"status": "accepted"}})
-        decision, error_class, detail = client.get_submission_decision("ALPHA-X")
+        decision, error_class, detail, self_corr = client.get_submission_decision("ALPHA-X")
         self.assertEqual(decision, "accepted")
         self.assertEqual(error_class, "")
         self.assertEqual(detail, "")
+        self.assertEqual(self_corr, 0.0)
 
 
 if __name__ == "__main__":

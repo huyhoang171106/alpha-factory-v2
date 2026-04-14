@@ -1,5 +1,43 @@
 """
 submit_governor.py - Queue and dispatch submit jobs to WQ.
+
+================================================================================
+INTEGRATION: Portfolio Constructor Ensemble Stacking
+================================================================================
+To enable ensemble submission, import PreSubmissionGate from portfolio_constructor:
+
+    from portfolio_constructor import PreSubmissionGate, build_ensemble_from_candidates
+
+Integration points in SubmitGovernor.enqueue():
+
+    # 1. After quality gate — collect candidates as (expression, sharpe) tuples
+    candidates = [
+        (getattr(r, "expression", ""), float(getattr(r, "sharpe", 0) or 0))
+        for r in sim_results
+        if passes_quality_gate_v2(r)
+    ]
+
+    # 2. Ask PreSubmissionGate whether an ensemble beats the best individual
+    gate = PreSubmissionGate(improvement_threshold=1.1)
+    use_ensemble, ensemble = gate.should_submit_ensemble(candidates)
+
+    if use_ensemble and ensemble:
+        # Route ensemble to submit queue via tracker
+        for alpha_expr, weight in zip(ensemble.sub_alphas, ensemble.weights):
+            tracker.transition_submit_state(alpha_id, "gated")
+            tracker.mark_queued(alpha_id)
+        logger.info("Ensemble queued: %d components, est Sharpe=%.3f",
+                    ensemble.num_components, ensemble.ensemble_sharpe)
+    else:
+        # Fall back to best individual alpha (existing code path)
+        ...
+
+State machine (unchanged):
+    new → gated → queued → submitted → accepted|rejected
+    Failure path: queued|failed → dead_lettered → replay → queued
+
+Ensemble-specific states are tracked per sub-alpha component in the tracker DB.
+================================================================================
 """
 
 from __future__ import annotations
@@ -7,12 +45,17 @@ from __future__ import annotations
 import logging
 import os
 import random
+import hashlib
 from difflib import SequenceMatcher
 from typing import Iterable, Tuple
 
 from alpha_policy import classify_quality_tier, passes_quality_gate_v2
 
 logger = logging.getLogger(__name__)
+
+
+def _safe_expr_ref(expression: str) -> str:
+    return hashlib.sha256((expression or "").strip().encode("utf-8")).hexdigest()[:12]
 
 
 class SubmitGovernor:
@@ -120,7 +163,12 @@ class SubmitGovernor:
         failed = 0
         dead_lettered = 0
         for _, expr, alpha_id, sharpe, _, _, submit_attempts, _, job_attempts, _ in selected:
-            logger.info("🚀 Submit queued alpha S=%.3f tier=%s: %s", sharpe, classify_quality_tier(sharpe, 9.9), expr[:80])
+            logger.info(
+                "Submit queued alpha S=%.3f tier=%s expr_id=%s",
+                sharpe,
+                classify_quality_tier(sharpe, 9.9),
+                _safe_expr_ref(expr),
+            )
             if hasattr(self.client, "submit_alpha_detailed"):
                 ok, error_class = self.client.submit_alpha_detailed(alpha_id)
             else:
@@ -207,9 +255,9 @@ class SubmitGovernor:
             if not hasattr(self.client, "get_submission_decision"):
                 pending += 1
                 continue
-            decision, error_class, detail = self.client.get_submission_decision(alpha_id)
+            decision, error_class, detail, self_corr = self.client.get_submission_decision(alpha_id)
             if decision in {"accepted", "rejected"}:
-                self.tracker.finalize_submit_review(alpha_id, decision=decision, reason=detail or decision)
+                self.tracker.finalize_submit_review(alpha_id, decision=decision, reason=detail or decision, self_corr=self_corr)
                 if decision == "accepted":
                     accepted += 1
                 else:

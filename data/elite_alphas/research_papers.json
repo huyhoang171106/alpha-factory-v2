@@ -1,0 +1,15 @@
+[
+    "Price Intensity: Using high-moment price dynamics (skewness, kurtosis) to predict reversals.",
+    "Liquidity-Adjusted Momentum: Weighting traditional momentum by relative volume or adv20 gaps.",
+    "Intraday-to-Close Divergence: Capturing institutional accumulation via vwap vs close spreads.",
+    "Macro-Regime Sensitivity: Adapting signals based on volatility regimes (ts_std_dev filters).",
+    "Low-Turnover Factor Timing: Using multi-layered smoothing (ts_decay_linear + ts_mean) to stabilize signals.",
+    "Capital-Efficient Reversals: Applying long-window ranking (ts_rank > 20) to high-moment price intensity.",
+    "Robust Institutional Spreads: vwap vs close divergence smoothed with ts_decay_linear.",
+    "Fitness-Optimized Momentum: Identifying persistent trends using ts_zscore on long-term returns.",
+    "Cross-Sectional Dispersion: Utilizing the gap between group_mean and individual price action.",
+    "Volume-Weighted Reversion: Fading violent price spikes that lack volume confirmation.",
+    "Decaying Return Shocks: Using jump_decay on ts_delta(close) to isolate structural shifts.",
+    "Entropy-Based Regimes: Employing ts_entropy to dynamically size positions based on market noise.",
+    "Vector Orthogonalization: Generating orthogonal signals using vector_neut to achieve purely idiosyncratic alpha."
+]

@@ -159,5 +159,41 @@ class TrackerMemoryTests(unittest.TestCase):
                 tracker.close()
 
 
+    def test_acceptance_rate_by_arm(self):
+        """acceptance_rate_by_arm must return per-cluster p_accept from resolved WQ decisions."""
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = os.path.join(tmp, "alpha_results.db")
+            tracker = AlphaTracker(db_path=db_path)
+            try:
+                # Seed 6 alphas with known final states (3 per cluster)
+                for i in range(3):
+                    # cluster: llm — all accepted
+                    cand = DummyCandidate()
+                    cand.theme = "rag"
+                    cand.mutation_type = "llm"
+                    r = DummyResult(f"rank(close-{i})", alpha_id=f"LLM-{i}")
+                    tracker.save_result(r, candidate=cand)
+                    tracker.mark_queued(f"LLM-{i}")
+                    tracker.mark_submitted(f"LLM-{i}")
+                    tracker.finalize_submit_review(f"LLM-{i}", "accepted")
+
+                for i in range(3):
+                    # cluster: deterministic — all rejected
+                    r = DummyResult(f"rank(volume-{i})", alpha_id=f"DET-{i}")
+                    tracker.save_result(r, candidate=DummyCandidate())
+                    tracker.mark_queued(f"DET-{i}")
+                    tracker.mark_submitted(f"DET-{i}")
+                    tracker.finalize_submit_review(f"DET-{i}", "rejected")
+
+                # min_submitted=1 to allow small samples
+                rates = tracker.acceptance_rate_by_arm(min_submitted=1)
+                llm_rate = rates.get("llm", {}).get("p_accept", -1)
+                det_rate = rates.get("deterministic", {}).get("p_accept", -1)
+                self.assertAlmostEqual(llm_rate, 1.0, places=3)
+                self.assertAlmostEqual(det_rate, 0.0, places=3)
+            finally:
+                tracker.close()
+
+
 if __name__ == "__main__":
     unittest.main()

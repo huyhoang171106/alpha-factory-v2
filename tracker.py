@@ -83,6 +83,7 @@ class AlphaTracker:
                 fail_reason TEXT DEFAULT '',
                 nearest_sibling TEXT DEFAULT '',
                 canonical_expr TEXT DEFAULT '',
+                self_corr REAL DEFAULT NULL,
                 quality_tier TEXT DEFAULT 'reject',
                 strategy_cluster TEXT DEFAULT 'deterministic',
                 risk_flags TEXT DEFAULT '',
@@ -254,6 +255,7 @@ class AlphaTracker:
             ("queued_at", "TEXT DEFAULT ''"),
             ("submitted_at", "TEXT DEFAULT ''"),
             ("accepted_at", "TEXT DEFAULT ''"),
+            ("self_corr", "REAL DEFAULT NULL"),
         ]
         for col, typedef in migrations:
             if col not in existing:
@@ -305,8 +307,9 @@ class AlphaTracker:
                     alpha_id, alpha_url, error, sub_sharpe,
                     region, universe, delay, decay, neutralization,
                     theme, family, mutation_type, hypothesis, fail_reason, nearest_sibling, canonical_expr,
-                    quality_tier, strategy_cluster, risk_flags, submit_state, run_id, batch_id
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    quality_tier, strategy_cluster, risk_flags, submit_state, run_id, batch_id, self_corr,
+                    created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 result.expression, result.sharpe, result.fitness,
                 result.turnover, result.returns, result.drawdown,
@@ -315,7 +318,9 @@ class AlphaTracker:
                 result.region, result.universe, result.delay, result.decay,
                 result.neutralization,
                 theme, family, mutation_type, hypothesis, fail_reason, nearest_sibling, canonical_expr,
-                quality_tier, strategy_cluster, risk_flags, initial_state, run_id, batch_id
+                quality_tier, strategy_cluster, risk_flags, initial_state, run_id, batch_id,
+                getattr(result, 'self_corr', None),
+                None,  # created_at defaults to CURRENT_TIMESTAMP
             ))
             self.conn.commit()
             param_sig = parameter_agnostic_signature(result.expression)
@@ -538,11 +543,12 @@ class AlphaTracker:
         )
         self.conn.commit()
 
-    def finalize_submit_review(self, alpha_id: str, decision: str, reason: str = "") -> bool:
+    def finalize_submit_review(self, alpha_id: str, decision: str, reason: str = "", self_corr: float | None = None) -> bool:
         """
         Apply post-submit decision from WQ review:
         - accepted
         - rejected
+        Also writes self_corr (wl13) back to alphas table for the feedback loop.
         """
         d = (decision or "").strip().lower()
         if d not in {"accepted", "rejected"}:
@@ -550,6 +556,12 @@ class AlphaTracker:
         ok = self.transition_submit_state(alpha_id, d, reason=reason or d)
         if not ok:
             return False
+        # Backfill self_corr to alphas table (feed for LearnedSelfCorrWeights)
+        if self_corr is not None and self_corr > 0:
+            self.conn.execute(
+                "UPDATE alphas SET self_corr = ?, submitted_at = COALESCE(submitted_at, CURRENT_TIMESTAMP) WHERE alpha_id = ? AND (self_corr IS NULL OR self_corr = 0)",
+                (self_corr, alpha_id),
+            )
         self.conn.execute(
             """
             UPDATE submit_jobs
@@ -671,7 +683,7 @@ class AlphaTracker:
                 SUM(CASE WHEN submit_state = 'accepted' THEN 1 ELSE 0 END) as accepted,
                 SUM(CASE WHEN submit_state = 'rejected' AND submitted_at != '' THEN 1 ELSE 0 END) as rejected_after_submit
             FROM alphas
-            WHERE created_at >= datetime('now', ?)
+            WHERE COALESCE(created_at, CURRENT_TIMESTAMP) >= datetime('now', ?)
             """,
             (f"-{max(1, int(lookback_minutes))} minutes",),
         )
@@ -708,6 +720,82 @@ class AlphaTracker:
             "true_accept_rate": true_accept_rate,
             "true_reject_rate": true_reject_rate,
         }
+
+    def acceptance_rate_by_arm(
+        self, min_submitted: int = 5, lookback_hours: int = 168
+    ) -> dict:
+        """
+        Returns P(true_accept | submitted) per strategy_cluster arm.
+
+        Only counts alphas with a *resolved* WQ review decision
+        (submit_state = 'accepted' OR submit_state = 'rejected' with a
+        submitted_at timestamp, meaning they went through the full WQ pipeline).
+        Arms with fewer than `min_submitted` resolved outcomes get a
+        uniform prior of 0.5 so we don't prematurely collapse exploration.
+
+        Returns:
+            dict[arm_name] -> {"accepted": int, "resolved": int, "p_accept": float}
+        """
+        with self._conn_lock:
+            cursor = self.conn.execute(
+                """
+                SELECT
+                    strategy_cluster,
+                    SUM(CASE WHEN submit_state = 'accepted' THEN 1 ELSE 0 END) AS accepted,
+                    SUM(CASE
+                            WHEN submit_state IN ('accepted', 'rejected')
+                             AND submitted_at != ''
+                            THEN 1 ELSE 0
+                        END) AS resolved
+                FROM alphas
+                WHERE submitted_at != ''
+                  AND COALESCE(created_at, CURRENT_TIMESTAMP) >= datetime('now', ?)
+                GROUP BY strategy_cluster
+                """,
+                (f"-{max(1, int(lookback_hours))} hours",),
+            )
+            rows = cursor.fetchall()
+
+        result: dict = {}
+        for cluster, accepted, resolved in rows:
+            arm = cluster or "deterministic"
+            p = 0.5  # Uniform prior for cold-start arms
+            if resolved and resolved >= min_submitted:
+                p = float(accepted or 0) / float(resolved)
+            result[arm] = {
+                "accepted": int(accepted or 0),
+                "resolved": int(resolved or 0),
+                "p_accept": p,
+            }
+        return result
+
+    def acceptance_rate_dict(
+        self,
+        min_submitted: int = 5,
+        lookback_hours: int = 168,
+    ) -> Dict[str, float]:
+        """
+        Clean dict interface: arm_name → Bayesian-smoothed P(accept | submitted).
+
+        Wraps acceptance_rate_by_arm() so callers get a simple dict without
+        having to unpack the inner {"accepted", "resolved", "p_accept"} structure.
+
+        Bayesian smoothing is already applied inside acceptance_rate_by_arm()
+        (resolved < min_submitted → uniform 0.5 prior), so no additional
+        pseudo-counting is needed here.
+
+        Args:
+            min_submitted: minimum resolved count before p_accept is trusted.
+            lookback_hours: hours of history to query.
+
+        Returns:
+            dict[arm_name] -> float  (Bayesian-smoothed acceptance rate in [0,1])
+        """
+        raw = self.acceptance_rate_by_arm(
+            min_submitted=min_submitted,
+            lookback_hours=lookback_hours,
+        )
+        return {arm: info["p_accept"] for arm, info in raw.items()}
 
     def load_qd_archive(self, limit: int = 2000) -> list[tuple[str, str, float, float]]:
         cursor = self.conn.execute(

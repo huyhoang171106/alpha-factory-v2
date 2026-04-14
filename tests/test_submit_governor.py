@@ -51,8 +51,8 @@ class FakeTracker:
     def get_submitted_pending_review(self, limit=50):
         return self.pending_review[:limit]
 
-    def finalize_submit_review(self, alpha_id, decision, reason=""):
-        self.review_finalized.append((alpha_id, decision, reason))
+    def finalize_submit_review(self, alpha_id, decision, reason="", self_corr=None):
+        self.review_finalized.append((alpha_id, decision, reason, self_corr))
         return True
 
     def mark_review_pending(self, alpha_id, reason="", backoff_seconds=60):
@@ -70,7 +70,7 @@ class FakeClient:
         return alpha_id in self.success_ids
 
     def get_submission_decision(self, alpha_id):
-        return self.decisions.get(alpha_id, ("submitted", "", ""))
+        return self.decisions.get(alpha_id, ("submitted", "", "", 0.0))
 
 
 class SubmitGovernorTests(unittest.TestCase):
@@ -103,6 +103,20 @@ class SubmitGovernorTests(unittest.TestCase):
         self.assertEqual(tracker.submitted, ["ID1"])
         self.assertEqual(tracker.failed[0][0], "ID2")
 
+    def test_flush_log_redacts_expression(self):
+        tracker = FakeTracker()
+        raw_expr = "group_neutralize(rank(ts_delta(close, 12)), subindustry)"
+        tracker.rows = [(1, raw_expr, "ID1", 2.0, "fam1", "theme1", 0, "", 0, "")]
+        client = FakeClient(success_ids={"ID1"})
+        governor = SubmitGovernor(tracker, client, max_submits_per_minute=4)
+
+        with self.assertLogs("submit_governor", level="INFO") as logs:
+            governor.flush_once(limit=1)
+
+        rendered = "\n".join(logs.output)
+        self.assertIn("expr_id=", rendered)
+        self.assertNotIn(raw_expr, rendered)
+
     def test_retry_policy_for_semantic_error_goes_dlq(self):
         retryable, delay, dlq = SubmitGovernor._retry_policy("submit_semantic_4xx_422", attempts=1)
         self.assertFalse(retryable)
@@ -113,9 +127,9 @@ class SubmitGovernorTests(unittest.TestCase):
         tracker.pending_review = [("ID1", 0, "", ""), ("ID2", 1, "", ""), ("ID3", 2, "", "")]
         client = FakeClient(
             decisions={
-                "ID1": ("accepted", "", ""),
-                "ID2": ("rejected", "", "fitness too low"),
-                "ID3": ("submitted", "", ""),
+                "ID1": ("accepted", "", "", 0.55),
+                "ID2": ("rejected", "", "fitness too low", 0.82),
+                "ID3": ("submitted", "", "", 0.0),
             }
         )
         governor = SubmitGovernor(tracker, client, max_submits_per_minute=4)
@@ -131,7 +145,7 @@ class SubmitGovernorTests(unittest.TestCase):
     def test_reconcile_submitted_applies_error_backoff(self):
         tracker = FakeTracker()
         tracker.pending_review = [("ID9", 2, "", "")]
-        client = FakeClient(decisions={"ID9": ("unknown", "submit_status_rate_limited_429", "")})
+        client = FakeClient(decisions={"ID9": ("unknown", "submit_status_rate_limited_429", "", 0.0)})
         governor = SubmitGovernor(tracker, client, max_submits_per_minute=4)
         out = governor.reconcile_submitted(limit=10)
         self.assertEqual(out["errors"], 1)

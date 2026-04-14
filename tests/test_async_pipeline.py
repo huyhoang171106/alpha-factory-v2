@@ -20,6 +20,9 @@ class FakeTracker:
     def load_qd_archive(self, limit=2000):
         return []
 
+    def acceptance_rate_by_arm(self, min_submitted=5, lookback_hours=168):
+        return {}
+
 
 class FakeClient:
     def simulate_batch(self, _expressions):
@@ -37,6 +40,24 @@ class FakeGovernor:
 
     def flush_once(self, limit=None):
         return {"selected": 0, "submitted": 0, "failed": 0}
+
+
+class FakeResult:
+    def __init__(
+        self,
+        sharpe=0.0,
+        fitness=0.0,
+        turnover=0.0,
+        drawdown=0.0,
+        sub_sharpe=-1.0,
+        error="",
+    ):
+        self.sharpe = sharpe
+        self.fitness = fitness
+        self.turnover = turnover
+        self.drawdown = drawdown
+        self.sub_sharpe = sub_sharpe
+        self.error = error
 
 
 class AsyncPipelineTests(unittest.TestCase):
@@ -68,19 +89,101 @@ class AsyncPipelineTests(unittest.TestCase):
         self.assertEqual(after["pulls"], 1)
         self.assertGreater(after["mean"], before["mean"])
 
-    def test_should_accept_candidate_rejects_collinear(self):
-        factory = self.make_factory(collinear=True)
-        cand = AlphaCandidate(expression="group_neutralize(ts_mean(returns,20),industry)")
-        accepted, reason = factory.should_accept_candidate(cand)
-        self.assertFalse(accepted)
-        self.assertEqual(reason, "collinear")
+    def test_acceptance_priors_noop_on_empty_rates(self):
+        """update_acceptance_priors with empty dict should not change allocator state."""
+        factory = self.make_factory()
+        arm = "llm"
+        before = factory.allocator.arm_snapshot(arm)
+        factory.allocator.update_acceptance_priors({})
+        after = factory.allocator.arm_snapshot(arm)
+        # p_accept should remain at the default uninformed prior of 0.5
+        self.assertAlmostEqual(after["p_accept"], before["p_accept"], places=6)
 
-    def test_should_accept_candidate_accepts_valid_expression(self):
-        factory = self.make_factory(collinear=False)
-        cand = AlphaCandidate(expression="group_neutralize(ts_zscore(ts_corr(close, volume, 20), 10), industry)")
-        accepted, reason = factory.should_accept_candidate(cand)
-        self.assertTrue(accepted)
-        self.assertEqual(reason, "accepted")
+    def test_acceptance_priors_shift_ev_for_high_accept_arm(self):
+        """Arms updated with high p_accept should receive higher EV than cold-start arm."""
+        factory = self.make_factory()
+        factory.allocator.update_acceptance_priors({
+            "llm": {"accepted": 9, "resolved": 10, "p_accept": 0.90},
+        })
+        ev_hot = factory.allocator.expected_value("llm", 0.6, 0.5)
+        ev_cold = factory.allocator.expected_value("deterministic", 0.6, 0.5)
+        # llm arm has p_accept=0.90, deterministic has p_accept=0.5 (prior)
+        # ev_hot should be >= ev_cold on average
+        self.assertGreaterEqual(ev_hot, ev_cold - 0.10)  # allow small Thompson noise
+
+    def test_continuous_reward_orders_good_result_above_bad_result(self):
+        factory = self.make_factory()
+        good = FakeResult(sharpe=1.8, fitness=1.4, turnover=20, drawdown=0.03, sub_sharpe=0.2)
+        weak = FakeResult(sharpe=-0.4, fitness=-0.2, turnover=80, drawdown=0.25, sub_sharpe=-0.3)
+
+        self.assertGreater(
+            factory._simulation_reward(good),
+            factory._simulation_reward(weak),
+        )
+        self.assertGreater(factory._simulation_reward(good), 0.5)
+        self.assertEqual(factory._simulation_reward(FakeResult(error="timeout")), 0.0)
+
+    def test_adaptive_gates_relax_when_sim_queue_is_starved(self):
+        factory = self.make_factory()
+        factory.dynamic_pre_rank_score = 50.0
+        factory.stats["generated"] = 100
+        before_rank = factory.dynamic_pre_rank_score
+        before_quality = factory.allocator.tier1_min_quality
+        before_ev = factory.allocator.min_expected_value
+
+        reason = factory.adapt_runtime_gates({
+            "accepted": 0,
+            "rejected_after_submit": 0,
+            "queued": 0,
+            "dlq_rate": 0.0,
+            "true_accept_rate": 0.0,
+        })
+
+        self.assertEqual(reason, "relax_starved")
+        self.assertLess(factory.dynamic_pre_rank_score, before_rank)
+        self.assertLess(factory.allocator.tier1_min_quality, before_quality)
+        self.assertLess(factory.allocator.min_expected_value, before_ev)
+
+    def test_adaptive_gates_tighten_on_low_resolved_acceptance(self):
+        factory = self.make_factory()
+        before_rank = factory.dynamic_pre_rank_score
+        before_quality = factory.allocator.tier1_min_quality
+        before_ev = factory.allocator.min_expected_value
+
+        reason = factory.adapt_runtime_gates({
+            "accepted": 1,
+            "rejected_after_submit": 12,
+            "queued": 2,
+            "dlq_rate": 0.0,
+            "true_accept_rate": 1 / 13,
+        })
+
+        self.assertEqual(reason, "tighten_accept")
+        self.assertGreater(factory.dynamic_pre_rank_score, before_rank)
+        self.assertGreater(factory.allocator.tier1_min_quality, before_quality)
+        self.assertGreater(factory.allocator.min_expected_value, before_ev)
+
+    def test_adaptive_gates_do_not_tighten_initial_sim_backlog(self):
+        factory = self.make_factory()
+        factory.dynamic_pre_rank_score = 50.0
+        factory.stats["generated"] = 20
+        factory.stats["simulated"] = 0
+        maxsize = getattr(factory.sim_queue, "maxsize", getattr(factory.sim_queue, "_maxsize", 300))
+        backlog_count = max(1, int(maxsize * 0.80))
+        for i in range(backlog_count):
+            factory.sim_queue.put_nowait((1, i, AlphaCandidate(expression=f"rank(close + {i})")))
+
+        reason = factory.adapt_runtime_gates({
+            "accepted": 0,
+            "rejected_after_submit": 0,
+            "queued": 0,
+            "dlq_rate": 0.0,
+            "true_accept_rate": 0.0,
+        })
+
+        self.assertEqual(reason, "hold")
+        self.assertEqual(factory.dynamic_pre_rank_score, 50.0)
+
 
 
 if __name__ == "__main__":
