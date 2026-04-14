@@ -20,16 +20,19 @@ import warnings
 from alpha_policy import estimate_ic_stability, estimate_self_corr_risk
 
 # Suppress sklearn warnings if model loaded
-warnings.filterwarnings('ignore', category=UserWarning)
+warnings.filterwarnings("ignore", category=UserWarning)
 
 _XGB_MODEL = None
 _MODEL_LOADED = False
+
 
 def get_xgb_model():
     global _XGB_MODEL, _MODEL_LOADED
     if not _MODEL_LOADED:
         _MODEL_LOADED = True
-        model_path = os.path.join(os.path.dirname(__file__), '..', 'data', 'models', 'xgboost_ranker.pkl')
+        model_path = os.path.join(
+            os.path.dirname(__file__), "..", "data", "models", "xgboost_ranker.pkl"
+        )
         if os.path.exists(model_path):
             try:
                 _XGB_MODEL = joblib.load(model_path)
@@ -37,19 +40,19 @@ def get_xgb_model():
                 pass
     return _XGB_MODEL
 
+
 def extract_features(expr: str) -> dict:
     return {
-        'length': len(expr),
-        'num_ops': expr.count('('),
-        'has_ts': 1 if 'ts_' in expr else 0,
-        'has_rank': 1 if 'rank' in expr else 0,
-        'has_group': 1 if 'group_' in expr else 0,
-        'has_volume': 1 if 'volume' in expr else 0,
-        'has_adv': 1 if 'adv' in expr.lower() else 0,
-        'has_returns': 1 if 'returns' in expr else 0,
-        'num_numbers': sum(c.isdigit() for c in expr)
+        "length": len(expr),
+        "num_ops": expr.count("("),
+        "has_ts": 1 if "ts_" in expr else 0,
+        "has_rank": 1 if "rank" in expr else 0,
+        "has_group": 1 if "group_" in expr else 0,
+        "has_volume": 1 if "volume" in expr else 0,
+        "has_adv": 1 if "adv" in expr.lower() else 0,
+        "has_returns": 1 if "returns" in expr else 0,
+        "num_numbers": sum(c.isdigit() for c in expr),
     }
-
 
 
 # ============================================================
@@ -61,35 +64,28 @@ HIGH_VALUE_MARKERS = {
     "group_rank": 18,
     "group_mean": 15,
     "group_zscore": 15,
-
     # Microstructure signals
     "adv20": 12,
     "adv60": 8,
     "vwap": 10,
-
     # Time-series operators that capture non-linear patterns
     "ts_corr": 10,
     "ts_covariance": 9,
     "ts_regression": 12,
     "ts_skewness": 10,
     "ts_decay_linear": 15,  # Boosted for Fitness
-    "ts_mean": 12,          # Added for Fitness smoothing
+    "ts_mean": 12,  # Added for Fitness smoothing
     "ts_product": 8,
-
     # Quality factors: sharpe-adjusted, std normalized
     "ts_std_dev": 6,
-
     # Volume signals
     "volume": 5,
-
     # Returns (clean signal field)
     "returns": 6,
-
     # Signed/conditional operators
     "signed_power": 10,
     "sign": 7,
     "scale": 6,
-
     # Rare operators (low competition = high edge)
     "trade_when": 18,
     "winsorize": 15,
@@ -97,13 +93,13 @@ HIGH_VALUE_MARKERS = {
     "bucket": 12,
     "hump": 12,
     "ts_scale": 10,
-    "ts_av_diff": 12,   # Boosted for reversion signals
+    "ts_av_diff": 12,  # Boosted for reversion signals
     "vector_neut": 18,  # Boosted: extremely powerful for neutralization
     "jump_decay": 10,
     "normalize": 8,
     "days_from_last_change": 12,
-    "ts_entropy": 15,   # New: measures signal complexity/information depth
-    "ts_step": 10,      # New: regime shift detection
+    "ts_entropy": 15,  # New: measures signal complexity/information depth
+    "ts_step": 10,  # New: regime shift detection
 }
 
 # ============================================================
@@ -113,20 +109,15 @@ LOW_VALUE_PENALTIES = {
     # Trivial single-field rank — too simple
     r"^rank\(\w+\)$": -20,
     r"^-rank\(\w+\)$": -20,
-
     # Direct price ratio without any transform
     r"rank\(close/open\)": -5,
     r"rank\(open/close\)": -5,
-
     # Nested ranks without meaningful transformation (rank(rank(...)))
     r"rank\(rank\(": -15,
-
     # Over-nested expressions (>6 levels deep)
     # Handled separately by depth check
-
     # Very short lookbacks without combo (noise-like)
     r"ts_delta\([a-z]+, [12]\)": -8,
-
     # Pure trend-following without volume confirmation (commodity alpha, WQ penalizes)
     r"^rank\(ts_mean\(returns, \d+\)\)$": -10,
     r"^-rank\(ts_mean\(returns, \d+\)\)$": -10,
@@ -139,10 +130,10 @@ def count_nesting_depth(expr: str) -> int:
     depth = 0
     max_depth = 0
     for ch in expr:
-        if ch == '(':
+        if ch == "(":
             depth += 1
             max_depth = max(max_depth, depth)
-        elif ch == ')':
+        elif ch == ")":
             depth -= 1
     return max_depth
 
@@ -150,7 +141,7 @@ def count_nesting_depth(expr: str) -> int:
 @lru_cache(maxsize=20000)
 def count_operators(expr: str) -> int:
     """Count number of operators used"""
-    ops = re.findall(r'[a-zA-Z_][a-zA-Z0-9_]*\s*\(', expr)
+    ops = re.findall(r"[a-zA-Z_][a-zA-Z0-9_]*\s*\(", expr)
     return len(ops)
 
 
@@ -172,12 +163,17 @@ def has_multi_field(expr: str) -> bool:
 
 def has_cross_sectional(expr: str) -> bool:
     """Check if expression uses cross-sectional operators"""
-    return any(op in expr for op in ["group_neutralize", "group_rank", "group_mean", "group_zscore"])
+    return any(
+        op in expr
+        for op in ["group_neutralize", "group_rank", "group_mean", "group_zscore"]
+    )
 
 
 def has_time_comparison(expr: str) -> bool:
     """Check if expression compares across time (ratio or delta)"""
-    return any(op in expr for op in ["ts_delay", "ts_delta", "ts_corr", "ts_regression"])
+    return any(
+        op in expr for op in ["ts_delay", "ts_delta", "ts_corr", "ts_regression"]
+    )
 
 
 # ============================================================
@@ -196,7 +192,7 @@ MAX_OPERATORS = 16
 @lru_cache(maxsize=20000)
 def count_unique_lookbacks(expr: str) -> int:
     """Count distinct numeric lookback constants in expression."""
-    numbers = re.findall(r'\b\d+\b', expr)
+    numbers = re.findall(r"\b\d+\b", expr)
     return len(set(numbers))
 
 
@@ -268,7 +264,9 @@ def complexity_score(expression: str) -> dict:
 EXPRESSION_COMPLEXITY_FLOOR = float(os.getenv("ASYNC_COMPLEXITY_MIN", "0.55"))
 
 
-def passes_complexity_check(expression: str, floor: float = EXPRESSION_COMPLEXITY_FLOOR) -> bool:
+def passes_complexity_check(
+    expression: str, floor: float = EXPRESSION_COMPLEXITY_FLOOR
+) -> bool:
     """Gate: reject overly complex expressions."""
     return complexity_score(expression)["score"] >= floor
 
@@ -278,7 +276,7 @@ def score_expression(expr: str) -> Tuple[float, str]:
     """
     Score an alpha expression from 0-100.
     Higher = better chance of passing WQ Brain checks.
-    
+
     Returns: (score, reason)
     """
     if not expr or len(expr) < 10:
@@ -310,10 +308,13 @@ def score_expression(expr: str) -> Tuple[float, str]:
     ml_penalty = 0
     if xgb_model:
         import pandas as pd
+
         feats = extract_features(expr)
         X = pd.DataFrame([feats])
         try:
-            prob = xgb_model.predict_proba(X)[0][1] # Probability of getting Sharpe > 1.0
+            prob = xgb_model.predict_proba(X)[0][
+                1
+            ]  # Probability of getting Sharpe > 1.0
             if prob < 0.15:
                 ml_penalty = -50
                 reasons.append(f"ML_REJECT:prob={prob:.2f}")
@@ -361,7 +362,7 @@ def score_expression(expr: str) -> Tuple[float, str]:
         reasons.append("+time_comparison")
 
     # Bonus for compositions: A * B pattern (signal × filter)
-    if re.search(r'\)\s*\*\s*\w*rank\(', expr):
+    if re.search(r"\)\s*\*\s*\w*rank\(", expr):
         score += 15
         reasons.append("+composite_signal")
 
@@ -382,7 +383,7 @@ def score_expression(expr: str) -> Tuple[float, str]:
 
     # Penalty: looks like brute-force mutation (just changing numbers)
     # e.g.: rank(ts_delta(close, 7)) — basic seed without composition
-    simple_seed_pattern = r'^-?rank\(ts_\w+\(\w+, \d+\)\)$'
+    simple_seed_pattern = r"^-?rank\(ts_\w+\(\w+, \d+\)\)$"
     if re.match(simple_seed_pattern, expr.strip()):
         score -= 25
         reasons.append("-basic_seed")
@@ -419,12 +420,12 @@ def rank_candidates(
 ) -> List[Tuple[str, float, str]]:
     """
     Score and rank alpha candidates before simulation.
-    
+
     Args:
         expressions: List of alpha expressions
         top_n: If set, return only top N candidates
         min_score: Minimum score threshold (filter out weak ones)
-    
+
     Returns:
         List of (expression, score, reason) sorted by score descending
     """
@@ -458,6 +459,7 @@ def apply_family_crowding_penalty(
         return scored
 
     import hashlib
+
     adjusted = []
     for expr, score, reason in scored:
         family = hashlib.md5(expr.strip().lower()[:60].encode()).hexdigest()[:12]
@@ -483,10 +485,10 @@ def compute_similarity_penalty(
     """
     accepted = []
     for expr, score, reason in scored:
-        tokens = set(re.findall(r'[a-zA-Z_]+', expr.lower()))
+        tokens = set(re.findall(r"[a-zA-Z_]+", expr.lower()))
         is_similar = False
         for prev_expr, _, _ in accepted:
-            prev_tokens = set(re.findall(r'[a-zA-Z_]+', prev_expr.lower()))
+            prev_tokens = set(re.findall(r"[a-zA-Z_]+", prev_expr.lower()))
             if not tokens or not prev_tokens:
                 continue
             overlap = len(tokens & prev_tokens) / max(len(tokens | prev_tokens), 1)
@@ -526,6 +528,7 @@ def filter_and_rank(
     n_filtered = len(expressions) - len(ranked)
     if n_filtered > 0:
         import logging
+
         logger = logging.getLogger(__name__)
         if ranked:
             top_score = ranked[0][1]
@@ -541,6 +544,7 @@ def filter_and_rank(
 # ============================================================
 # Meta-Ranker ML Model — expression-level scoring signals
 # ============================================================
+
 
 def regime_sensitivity_score(expression: str) -> float:
     """
@@ -578,10 +582,9 @@ def regime_sensitivity_score(expression: str) -> float:
         score += 0.15  # normalization = mild regime robustness
 
     # Static momentum with no adaptation — penalize
-    static_momentum = (
-        bool(re.search(r'^-?rank\(ts_mean\(returns,\s*\d+\)\)$', expr))
-        or bool(re.search(r'^-?rank\(ts_delta\(close,\s*\d+\)\)$', expr))
-    )
+    static_momentum = bool(
+        re.search(r"^-?rank\(ts_mean\(returns,\s*\d+\)\)$", expr)
+    ) or bool(re.search(r"^-?rank\(ts_delta\(close,\s*\d+\)\)$", expr))
     if static_momentum and score < 0.3:
         score = max(0.0, score - 0.25)
 
@@ -634,7 +637,7 @@ def ic_decay_probability(
     risk = 0.0
 
     # Long lookbacks → overfitting risk
-    numbers = re.findall(r'\b\d+\b', expr)
+    numbers = re.findall(r"\b\d+\b", expr)
     max_lookback = max((int(n) for n in numbers if int(n) > 0), default=0)
     if max_lookback > 252:
         risk += 0.30
@@ -781,7 +784,7 @@ def turnover_prediction(expression: str) -> float:
     base = 1.0  # 100% annual turnover baseline
 
     # Short ts_delta lookbacks → high turnover
-    short_delta_matches = re.findall(r'ts_delta\([^)]*,\s*(\d+)\s*\)', expr)
+    short_delta_matches = re.findall(r"ts_delta\([^)]*,\s*(\d+)\s*\)", expr)
     for raw in short_delta_matches:
         val = int(raw)
         if val <= 1:
@@ -792,7 +795,7 @@ def turnover_prediction(expression: str) -> float:
             base += 0.05
 
     # Short ts_mean lookbacks → smoothing reduces turnover
-    short_mean_matches = re.findall(r'ts_mean\([^)]*,\s*(\d+)\s*\)', expr)
+    short_mean_matches = re.findall(r"ts_mean\([^)]*,\s*(\d+)\s*\)", expr)
     for raw in short_mean_matches:
         val = int(raw)
         if val <= 5:
@@ -802,7 +805,7 @@ def turnover_prediction(expression: str) -> float:
 
     # ts_decay_linear — reduces turnover
     if "ts_decay_linear" in expr:
-        decay_matches = re.findall(r'ts_decay_linear\([^)]*,\s*(\d+)\s*\)', expr)
+        decay_matches = re.findall(r"ts_decay_linear\([^)]*,\s*(\d+)\s*\)", expr)
         for raw in decay_matches:
             val = int(raw)
             if val >= 10:
@@ -818,7 +821,7 @@ def turnover_prediction(expression: str) -> float:
         base -= 0.10
 
     # ts_delay — can increase or decrease depending on direction
-    delay_matches = re.findall(r'ts_delay\([^)]*,\s*(-?\d+)\s*\)', expr)
+    delay_matches = re.findall(r"ts_delay\([^)]*,\s*(-?\d+)\s*\)", expr)
     for raw in delay_matches:
         val = int(raw)
         if val < 0:
@@ -884,7 +887,7 @@ def score_with_meta_model(candidate: str) -> dict:
     # Higher = better
     composite = (
         0.25 * expected_sharpe
-        + 0.20 * (1.0 - decay_prob)           # penalise decay risk
+        + 0.20 * (1.0 - decay_prob)  # penalise decay risk
         + 0.20 * cross_regime
         + 0.15 * ic_stability
         + 0.10 * simplicity
@@ -903,6 +906,152 @@ def score_with_meta_model(candidate: str) -> dict:
 
 
 # ============================================================
+# Pre-Simulation Gate Estimator  (Fix gate=0% failure rate)
+# ============================================================
+
+# Gate thresholds — must sync with alpha_policy.py HIGH_THROUGHPUT_THRESHOLDS
+_GATE_MIN_SHARPE = 1.25
+_GATE_MIN_FITNESS = 1.00
+_GATE_MIN_ROBUST_SCORE = 1.35
+_GATE_MIN_TURNOVER = 1.0
+_GATE_MAX_TURNOVER = 70.0
+
+
+def estimate_gate_probability(expr: str) -> dict:
+    """
+    Pre-simulation gate probability estimator.
+    Predicts P(pass_gate) before wasting WQ Brain quota.
+
+    Returns:
+        {
+            "passed": bool,          # True if should proceed to WQ simulation
+            "probability": float,    # 0-1 gate pass probability
+            "expected_sharpe": float, # estimated Sharpe proxy
+            "expected_fitness": float,
+            "expected_turnover": float,
+            "gate_score": float,      # composite gate proxy score
+            "reason": str,            # rejection or acceptance reason
+        }
+
+    Key insight: rank_score/100 → expected_sharpe is too pessimistic because
+    rank_score measures STRUCTURE not PERFORMANCE. We blend multiple signals.
+    """
+    if not expr or len(expr) < 10:
+        return {
+            "passed": False,
+            "probability": 0.0,
+            "expected_sharpe": 0.0,
+            "expected_fitness": 0.0,
+            "expected_turnover": 0.0,
+            "gate_score": 0.0,
+            "reason": "too_short",
+        }
+
+    # --- Signal 1: ranker score (structural quality) ---
+    rank_score, _ = score_expression(expr)
+    rank_sharpe = rank_score / 100.0 * 2.5  # scale to expected Sharpe range
+
+    # --- Signal 2: meta-model expected Sharpe ---
+    meta = score_with_meta_model(expr)
+    meta_sharpe = meta["expected_sharpe"] * 2.5
+
+    # --- Signal 3: XGBoost model (if available) ---
+    xgb = get_xgb_model()
+    xgb_sharpe = 0.0
+    if xgb:
+        import pandas as pd
+
+        feats = extract_features(expr)
+        X = pd.DataFrame([feats])
+        try:
+            prob = xgb.predict_proba(X)[0][1]  # P(Sharpe > 1.0)
+            xgb_sharpe = prob * 2.0  # convert to expected Sharpe
+        except Exception:
+            pass
+
+    # --- Signal 4: self-corr risk (low = better) ---
+    self_corr_risk = estimate_self_corr_risk(expr)
+    scorr_bonus = (1.0 - self_corr_risk) * 0.3  # up to +0.3 for low risk
+
+    # --- Weighted blend of signals ---
+    n_signals = 1.0
+    if xgb:
+        n_signals += 1.0
+        blended_sharpe = rank_sharpe * 0.30 + meta_sharpe * 0.30 + xgb_sharpe * 0.40
+    else:
+        blended_sharpe = rank_sharpe * 0.40 + meta_sharpe * 0.60
+
+    blended_sharpe += scorr_bonus
+    blended_sharpe = max(0.0, blended_sharpe)
+
+    # --- Expected fitness (correlates with Sharpe but lower) ---
+    expected_fitness = blended_sharpe * 0.75
+
+    # --- Expected turnover (from meta model or heuristic) ---
+    turnover_pred = meta.get("turnover_prediction", 0.0) * 50.0  # scale to %
+    if turnover_pred == 0.0:
+        # Fallback heuristic: simple expressions → lower turnover
+        n_ops = count_operators(expr)
+        turnover_pred = min(30.0 + n_ops * 4.0, 65.0)
+
+    # --- Composite gate score (proxy for robust_quality_score) ---
+    # Approximates: 0.52*sharpe + 0.33*fitness + 0.25*checks - penalties
+    gate_score = (0.52 * blended_sharpe) + (0.33 * expected_fitness)
+    if turnover_pred > 55.0:
+        gate_score -= min(0.5, (turnover_pred - 55.0) / 60.0)
+    if turnover_pred < 1.5:
+        gate_score -= 0.2
+    if self_corr_risk > 0.60:
+        gate_score -= 0.25
+    gate_score = max(0.0, gate_score)
+
+    # --- Hard filter thresholds ---
+    hard_fail = False
+    reasons = []
+
+    if blended_sharpe < 0.6:
+        hard_fail = True
+        reasons.append(f"sharpe_too_low({blended_sharpe:.2f}<0.6)")
+    elif blended_sharpe < 1.0:
+        reasons.append(f"sharpe_marginal({blended_sharpe:.2f})")
+
+    if expected_fitness < 0.6:
+        hard_fail = True
+        reasons.append(f"fitness_too_low({expected_fitness:.2f}<0.6)")
+
+    if gate_score < 0.8:
+        hard_fail = True
+        reasons.append(f"gate_score_low({gate_score:.2f}<0.8)")
+
+    if not (1.0 < turnover_pred < 70.0):
+        hard_fail = True
+        reasons.append(f"turnover_out_of_range({turnover_pred:.1f}%)")
+
+    # Known quality markers → bonus (if present, relax hard_fail)
+    quality_markers = ["group_neutralize", "group_rank", "ts_corr", "ts_regression"]
+    marker_bonus = sum(0.1 for m in quality_markers if m in expr)
+    if hard_fail and marker_bonus >= 0.3:
+        hard_fail = False
+        reasons.append("quality_markers_override")
+
+    probability = min(blended_sharpe / _GATE_MIN_SHARPE, 1.0)
+    probability = max(0.0, min(1.0, probability))
+
+    passed = not hard_fail and gate_score >= 0.8
+    reason = "; ".join(reasons) if reasons else "gate_estimate_pass"
+
+    return {
+        "passed": passed,
+        "probability": round(probability, 3),
+        "expected_sharpe": round(blended_sharpe, 3),
+        "expected_fitness": round(expected_fitness, 3),
+        "expected_turnover": round(turnover_pred, 1),
+        "gate_score": round(gate_score, 3),
+        "reason": reason,
+    }
+
+
+# ============================================================
 # Quick test
 # ============================================================
 if __name__ == "__main__":
@@ -911,22 +1060,18 @@ if __name__ == "__main__":
         "rank(close)",
         "rank(ts_delta(close, 5))",
         "rank(ts_mean(returns, 20))",
-
         # Medium complexity
         "-rank(ts_corr(open, volume, 10))",
         "rank(volume / ts_mean(volume, 20)) * rank(returns)",
         "rank(ts_mean(returns, 20) / (ts_std_dev(returns, 20) + 0.001))",
-
         # High value — group ops + multi-field
         "group_neutralize(rank(ts_mean(returns, 20)), sector)",
         "rank(ts_delta(close, 5)) - group_mean(rank(ts_delta(close, 5)), 1, industry)",
         "group_neutralize(rank(volume / adv20), sector)",
-
         # Composite signal × filter
         "rank(ts_std_dev(returns, 5)) * (-rank(ts_delta(close, 5)))",
         "rank(ts_sum(returns * volume, 10) / ts_sum(abs(returns) * volume, 10) + 0.001)",
         "(-rank(ts_std_dev(returns, 5))) * rank(ts_mean(returns, 20))",
-
         # Microstructure
         "-rank(ts_mean(abs(returns) / (volume + 1), 20))",
         "rank(ts_corr(returns, ts_delta(volume, 1), 10)) * rank(ts_mean(returns, 20))",
