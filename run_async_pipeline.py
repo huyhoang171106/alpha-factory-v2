@@ -153,7 +153,7 @@ def safe_expr_ref(expression: str) -> str:
 
 
 def _quick_similarity_score(
-    expr: str, recent: list[str], threshold: float = 0.85
+    expr: str, recent: list[str], threshold: float = 0.95
 ) -> float:
     """
     Fast Jaccard token overlap check against a list of recent expressions.
@@ -227,6 +227,10 @@ class AsyncAlphaFactory:
             limit=1800
         ):
             self.qd_archive.restore_elite(descriptor, expr, quality, novelty)
+
+        # Clear QD signature seen set - allow fresh expressions to pass
+        # QD archive entries are for QD purposes, not for blocking new candidates
+        self.qd_archive.signature_seen.clear()
 
         self.is_running = True
         self.stats = {
