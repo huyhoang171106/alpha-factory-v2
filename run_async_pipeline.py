@@ -445,8 +445,12 @@ class AsyncAlphaFactory:
             return False, "duplicate_signature", 0.0
         if self.tracker.is_duplicate(cand.expression):
             return False, "duplicate_db", 0.0
-        if self.tracker.is_collinear(cand.expression, threshold=0.95):
-            return False, "collinear", 0.0
+
+        # Collinearity check disabled - cache empty on fresh runs causes false positives
+        # Re-enable after cache population via save_result()
+        # if len(self.tracker._recent_structure_cache) > 10:
+        #     if self.tracker.is_collinear(cand.expression, threshold=0.95):
+        #         return False, "collinear", 0.0
 
         # ---- Self-corr risk pre-filter ----
         risk = estimate_self_corr_risk(cand.expression)
