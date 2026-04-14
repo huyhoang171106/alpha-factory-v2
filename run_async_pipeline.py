@@ -53,6 +53,20 @@ from submit_governor import SubmitGovernor
 from quality_diversity import QualityDiversityArchive
 from budget_allocator import BudgetAllocator, RegimeAwareArmSelector
 
+# Standalone execution should behave like the CLI's local profile unless the
+# caller already provided explicit environment overrides.
+_LOCAL_RUNTIME_DEFAULTS = {
+    "ASYNC_MIN_CRITIC_SCORE": "0.40",
+    "ASYNC_ROBUST_SCORE_MIN": "1.00",
+    "ASYNC_MIN_SHARPE": "1.25",
+    "ASYNC_MIN_FITNESS": "0.80",
+    "ASYNC_REQUIRE_ALL_CHECKS": "0",
+    "ASYNC_MIN_CHECKS_RATIO": "0.50",
+    "ASYNC_SIM_BATCH_TIMEOUT": "600",
+}
+for _k, _v in _LOCAL_RUNTIME_DEFAULTS.items():
+    os.environ.setdefault(_k, _v)
+
 # v2 new modules integration (loaded after logger is ready)
 _NEW_MODULES_OK = False
 try:
@@ -95,8 +109,8 @@ ADAPTIVE_MAX_PRE_RANK = float(
     os.getenv("ASYNC_ADAPTIVE_MAX_PRE_RANK", "65.0")
 )  # raised from 62
 ADAPTIVE_MIN_QUALITY = float(
-    os.getenv("ASYNC_ADAPTIVE_MIN_QUALITY", "0.50")
-)  # raised from 0.44
+    os.getenv("ASYNC_ADAPTIVE_MIN_QUALITY", "0.44")
+)  # allow actual relaxation when starved
 ADAPTIVE_MAX_QUALITY = float(
     os.getenv("ASYNC_ADAPTIVE_MAX_QUALITY", "0.65")
 )  # raised from 0.58
