@@ -217,10 +217,15 @@
         0.8,
         0.6,
         0.3,
+        0.1,
+        1.0,
+        0.8,
+        0.6,
+        0.3,
         0.1
       ],
       "p_accept": 0.2,
-      "sim_count": 215,
+      "sim_count": 220,
       "is_alive": false
     },
     "singleton_test": {
@@ -268,10 +273,11 @@
         1.5,
         1.5,
         1.5,
+        1.5,
         1.5
       ],
       "p_accept": 0.6,
-      "sim_count": 43,
+      "sim_count": 44,
       "is_alive": true
     }
   }
