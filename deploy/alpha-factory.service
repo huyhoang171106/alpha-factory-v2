@@ -10,10 +10,9 @@ Type=simple
 WorkingDirectory=/home/huyhoang/alpha-factory-v2
 User=huyhoang
 Group=huyhoang
-EnvironmentFile=/home/huyhoang/alpha-factory-v2/.env
 
-# Run the VPS runner script
-ExecStart=/bin/bash /home/huyhoang/alpha-factory-v2/scripts/run_vps.sh
+# Run directly with bash
+ExecStart=/bin/bash -lc "cd /home/huyhoang/alpha-factory-v2 && ./scripts/run_vps.sh"
 
 # Restart policy  
 Restart=always
@@ -24,14 +23,6 @@ TimeoutStartSec=120
 TimeoutStopSec=60
 KillMode=mixed
 KillSignal=SIGTERM
-
-# Logging
-StandardOutput=append:/home/huyhoang/alpha-factory-v2/results/vps_runner.log
-StandardError=append:/home/huyhoang/alpha-factory-v2/results/vps_runner.log
-
-# Resource limits
-MemoryMax=4G
-CPUQuota=80%
 
 [Install]
 WantedBy=multi-user.target
