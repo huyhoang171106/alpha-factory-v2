@@ -1,17 +1,37 @@
-[Unit]
-Description=Alpha Factory Async Engine
+﻿[Unit]
+Description=Alpha Factory Async Engine (Production)
 After=network-online.target
 Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
 
 [Service]
 Type=simple
 WorkingDirectory=/opt/alpha-factory
+User=ubuntu
+Group=ubuntu
 EnvironmentFile=/opt/alpha-factory/.env
+
+# Run the VPS runner script
 ExecStart=/bin/bash /opt/alpha-factory/scripts/run_vps.sh
+
+# Restart policy  
 Restart=always
 RestartSec=10
-KillSignal=SIGINT
-TimeoutStopSec=30
+
+# Graceful shutdown
+TimeoutStartSec=120
+TimeoutStopSec=60
+KillMode=mixed
+KillSignal=SIGTERM
+
+# Logging - let script handle its own logs
+StandardOutput=append:/opt/alpha-factory/results/vps_runner.log
+StandardError=append:/opt/alpha-factory/results/vps_runner.log
+
+# Resource limits
+MemoryMax=4G
+CPUQuota=80%
 
 [Install]
 WantedBy=multi-user.target
