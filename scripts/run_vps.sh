@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env bash
+#!/usr/bin/env bash
 # =============================================================================
 # Alpha Factory VPS Runner
 # - Auto-restart on crash with exponential backoff
@@ -11,6 +11,16 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
+
+# --- Load environment variables ---
+if [ -f "$ROOT_DIR/.env" ]; then
+    set -a
+    source "$ROOT_DIR/.env"
+    set +a
+    echo "Loaded .env file"
+else
+    echo "WARNING: .env file not found at $ROOT_DIR/.env"
+fi
 
 # --- Configuration ---
 LOCK_FILE="$ROOT_DIR/results/vps_runner.lock"
@@ -210,3 +220,4 @@ kill $HEALTH_MON_PID 2>/dev/null || true
 release_lock
 
 log "VPS Runner stopped"
+
