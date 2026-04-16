@@ -865,40 +865,6 @@ def robust_quality_score(result) -> float:
     return raw - turnover_penalty - sub_penalty - drawdown_penalty
 
 
-def passes_quality_gate_v2(result, thresholds: QualityThresholds = HIGH_THROUGHPUT_THRESHOLDS) -> bool:
-    """
-    Stricter, overfit-aware gate:
-    - preserve hard constraints
-    - require composite quality above floor
-    - penalize weak sub-universe robustness
-    - penalize high self-correlation (autocorrelation > 0.7)
-    """
-    if not passes_quality_gate(result, thresholds):
-        return False
-    if getattr(result, "error", ""):
-        return False
-    raw_sub = getattr(result, "sub_sharpe", None)
-    if raw_sub is not None:
-        sub_sharpe = float(raw_sub)
-        # Known negative sub-universe sharpe is a strong rejection signal.
-        if sub_sharpe > -0.99 and sub_sharpe < 0.0:
-            return False
-    # Self-correlation check (wl13 in WQ) — thresholds configurable via env vars
-    self_corr_threshold = float(os.getenv("SELF_CORR_REJECT_THRESHOLD", "0.70"))
-    self_corr_sharpe_escape = float(os.getenv("SELF_CORR_SHARPE_ESCAPE", "1.65"))
-    self_corr = getattr(result, "self_corr", 0.0)
-    if self_corr > self_corr_threshold:
-        sharpe = float(getattr(result, "sharpe", 0.0))
-        fitness = float(getattr(result, "fitness", 0.0))
-        if sharpe < self_corr_sharpe_escape:
-            _log_self_corr_rejection(result, self_corr, sharpe, fitness)
-            return False
-    score = robust_quality_score(result)
-    # Configurable floor to trade off strictness vs throughput.
-    floor = float(os.getenv("ASYNC_ROBUST_SCORE_MIN", "1.35"))
-    return score >= floor
-
-
 def estimate_competition_priority(result) -> float:
     """
     Priority proxy for IQC-style ranking:
