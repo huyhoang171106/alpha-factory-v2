@@ -322,7 +322,7 @@ class WQClient:
                     # Fail-fast: if metrics are already below minimum thresholds, stop polling.
                     # We use 1.25/1.0 as standard "useful" floors. 
                     if result.sharpe < 1.0 or result.fitness < 0.6:
-                        logger.info(f"  [FAIL-FAST] Sharpe={result.sharpe:.3f}, Fitness={result.fitness:.2f} (Incomplete)")
+                        logger.info(f"  [FAIL-FAST] Sharpe={result.sharpe:.3f}, Fitness={result.fitness if result.fitness is not None else 0.0:.2f} (Incomplete)")
                         if 'alpha' in data:
                             result.alpha_id = data['alpha']
                             result.alpha_url = f"https://platform.worldquantbrain.com/alpha/{result.alpha_id}"
@@ -389,7 +389,7 @@ class WQClient:
                 "  %s | Sharpe: %.3f | Fitness: %.2f | Turnover: %.1f%% | expr_id=%s brain_ref=%s",
                 status,
                 result.sharpe,
-                result.fitness,
+                (result.fitness if result.fitness is not None else 0.0),
                 result.turnover,
                 _safe_expr_ref(result.expression),
                 _safe_alpha_ref(result.alpha_id),
@@ -609,3 +609,5 @@ if __name__ == "__main__":
     print(f"\nResult: Sharpe={result.sharpe}, Fitness={result.fitness}, "
           f"Turnover={result.turnover}%, Submittable={result.is_submittable}")
     print(f"BrainRef: {_safe_alpha_ref(result.alpha_id)}")
+
+
