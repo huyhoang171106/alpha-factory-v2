@@ -7,13 +7,13 @@ StartLimitBurst=5
 
 [Service]
 Type=simple
-WorkingDirectory=/opt/alpha-factory
-User=ubuntu
-Group=ubuntu
-EnvironmentFile=/opt/alpha-factory/.env
+WorkingDirectory=/home/huyhoang/alpha-factory-v2
+User=huyhoang
+Group=huyhoang
+EnvironmentFile=/home/huyhoang/alpha-factory-v2/.env
 
 # Run the VPS runner script
-ExecStart=/bin/bash /opt/alpha-factory/scripts/run_vps.sh
+ExecStart=/bin/bash /home/huyhoang/alpha-factory-v2/scripts/run_vps.sh
 
 # Restart policy  
 Restart=always
@@ -25,9 +25,9 @@ TimeoutStopSec=60
 KillMode=mixed
 KillSignal=SIGTERM
 
-# Logging - let script handle its own logs
-StandardOutput=append:/opt/alpha-factory/results/vps_runner.log
-StandardError=append:/opt/alpha-factory/results/vps_runner.log
+# Logging
+StandardOutput=append:/home/huyhoang/alpha-factory-v2/results/vps_runner.log
+StandardError=append:/home/huyhoang/alpha-factory-v2/results/vps_runner.log
 
 # Resource limits
 MemoryMax=4G
