@@ -74,14 +74,14 @@ jobs:
         run: python alpha_factory_cli.py public-report --minutes 60 --out public_report.json
 
       - name: Upload KPI artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: alpha-kpi-snapshot
           path: kpi_snapshot.json
           retention-days: 7
 
       - name: Upload public report artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: alpha-public-report
           path: public_report.json
